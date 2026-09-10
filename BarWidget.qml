@@ -16,7 +16,7 @@ import qs.Ui
 // surfaces a one-click fix when it doesn't.
 BarWidget {
   id: root
-  moduleName: "hriddho.mullion"
+  moduleName: "ashikuzzaman.mullion"
 
   // "checking" until the first probe returns, so we never flash a warning
   // during startup before we know anything.
@@ -92,6 +92,12 @@ BarWidget {
 
   function loadSettings() { if (!readProc.running) readProc.running = true }
 
+  // No-argument, so broadcast() can relay it to every instance.
+  function toggleSettings() {
+    root.settingsOpen = !root.settingsOpen
+    if (root.settingsOpen) root.loadSettings()
+  }
+
   function put(key, value) {
     var next = {}
     for (var k in values) next[k] = values[k]
@@ -123,7 +129,7 @@ BarWidget {
   Process { id: actionProc }
 
   IpcHandler {
-    target: "hriddho.mullion"
+    target: "ashikuzzaman.mullion"
 
     function refresh(): void {
       root.broadcast("refresh")
@@ -131,9 +137,12 @@ BarWidget {
 
     // So the panel can be opened from a keybinding or the terminal, not only
     // by clicking the bar icon.
+    //
+    // Relayed with broadcast: the bar builds one widget per surface and an IPC
+    // target only ever routes to one of them, so toggling this instance alone
+    // would flip a copy whose popup nobody can see.
     function settings(): void {
-      root.loadSettings()
-      root.settingsOpen = !root.settingsOpen
+      root.broadcast("toggleSettings")
     }
   }
 
@@ -256,8 +265,7 @@ BarWidget {
     tooltipText: root.tooltip
     onPressed: {
       if (root.state === "healthy" || root.state === "checking") {
-        root.settingsOpen = !root.settingsOpen
-        if (root.settingsOpen) root.loadSettings()
+        root.toggleSettings()
       } else {
         root.fix()
       }
@@ -355,13 +363,13 @@ BarWidget {
   // Controls write through mullion-set, the same command the terminal uses,
   // so the panel and the file can never disagree.
   PopupCard {
-    id: settings
+    id: settingsPanel
     anchorItem: root
     owner: root
     bar: root.bar
     open: root.settingsOpen
-    contentWidth: settings.fittedContentWidth(Style.space(330))
-    contentHeight: settings.fittedContentHeight(column.implicitHeight)
+    contentWidth: settingsPanel.fittedContentWidth(Style.space(330))
+    contentHeight: settingsPanel.fittedContentHeight(column.implicitHeight)
     onOpenChanged: if (!open) root.settingsOpen = false
 
     Column {

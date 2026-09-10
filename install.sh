@@ -44,6 +44,26 @@ case ":$PATH:" in
 esac
 "$HOME/.local/bin/rebuild-hyprbars"
 
+say "Installing the bar widget and settings panel"
+# Installed from the marketplace, this already runs from inside the plugin
+# directory. Cloned and run by hand, it does not, and without this step there
+# is no bar icon and no settings panel at all.
+PLUGIN_ID=$(python3 -c "import json;print(json.load(open('$HERE/manifest.json'))['id'])")
+PLUGIN_DIR="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
+if [[ $(cd "$HERE" && pwd) == "$PLUGIN_DIR" ]]; then
+  echo "Already running from the plugin directory."
+else
+  mkdir -p "$PLUGIN_DIR"
+  for item in manifest.json BarWidget.qml install.sh uninstall.sh README.md LICENSE bin config patches assets; do
+    [[ -e $HERE/$item ]] && cp -r "$HERE/$item" "$PLUGIN_DIR/"
+  done
+  rm -rf "$PLUGIN_DIR/bin/__pycache__"
+  echo "Installed to $PLUGIN_DIR"
+fi
+omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+sleep 1
+omarchy plugin enable "$PLUGIN_ID" --section left >/dev/null 2>&1 || true
+
 say "Installing the window-shelf bar widget (minimize)"
 if omarchy plugin list 2>/dev/null | grep -q "io.github.gardnmi.window-shelf"; then
   echo "Already installed."
@@ -57,7 +77,10 @@ cp "$HERE/config/mullion.lua" "$HOME/.config/hypr/mullion.lua"
 HYPR="$HOME/.config/hypr/hyprland.lua"
 cp "$HYPR" "$HYPR.bak.$(date +%s)"
 
-if ! grep -q "hyprbars.so" "$HYPR"; then
+# The two edits are checked separately: a config that has one but not the
+# other (a partial uninstall, a hand-edit) must get the missing half rather
+# than be declared already done.
+if ! grep -q "hyprbars.so" "$HYPR" || ! grep -q 'require("hypr.mullion")' "$HYPR"; then
   python3 - "$HYPR" <<'PY'
 import sys
 p = sys.argv[1]
@@ -70,9 +93,10 @@ pcall(function()
 end)
 
 ''' + anchor
-if anchor not in s:
-    sys.exit("could not find require(\"default.hypr.omarchy\") in hyprland.lua")
-s = s.replace(anchor, block, 1)
+if "hyprbars.so" not in s:
+    if anchor not in s:
+        sys.exit("could not find require(\"default.hypr.omarchy\") in hyprland.lua")
+    s = s.replace(anchor, block, 1)
 if 'require("hypr.mullion")' not in s:
     s = s.replace('require("hypr.looknfeel")',
                   'require("hypr.looknfeel")\nrequire("hypr.mullion")', 1)

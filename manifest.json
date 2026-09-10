@@ -1,12 +1,14 @@
 {
   "schemaVersion": 1,
-  "id": "hriddho.mullion",
+  "id": "ashikuzzaman.mullion",
   "name": "Mullion",
   "version": "1.0.0",
-  "author": "S M Ashikuzzaman Hriddho",
+  "author": "Ashikuzzaman Hriddho",
   "license": "MIT",
   "description": "macOS-style windows for Omarchy: traffic-light title bars, drag to move, edge resize, minimize to the bar, and half-screen snapping.",
-  "kinds": ["bar-widget"],
+  "kinds": [
+    "bar-widget"
+  ],
   "entryPoints": {
     "barWidget": "BarWidget.qml"
   },
@@ -15,11 +17,25 @@
     "description": "Keeps the macOS-style title bars healthy. Hidden while they work; one-click fix when a Hyprland update stops them loading.",
     "category": "Compositor",
     "aliases": [
-      "macos", "mac", "apple", "mullion",
-      "titlebar", "title bar", "traffic lights", "window controls",
-      "minimize", "maximize", "close", "zoom",
-      "snap", "split screen", "half screen", "tiling",
-      "drag", "resize", "hyprbars"
+      "macos",
+      "mac",
+      "apple",
+      "mullion",
+      "titlebar",
+      "title bar",
+      "traffic lights",
+      "window controls",
+      "minimize",
+      "maximize",
+      "close",
+      "zoom",
+      "snap",
+      "split screen",
+      "half screen",
+      "tiling",
+      "drag",
+      "resize",
+      "hyprbars"
     ],
     "allowMultiple": false,
     "defaultSection": "left",
@@ -28,8 +44,16 @@
       "alwaysShow": false
     },
     "schema": [
-      { "key": "checkIntervalMinutes", "type": "number", "label": "Check interval (minutes)" },
-      { "key": "alwaysShow", "type": "boolean", "label": "Show even when title bars are healthy" }
+      {
+        "key": "checkIntervalMinutes",
+        "type": "number",
+        "label": "Check interval (minutes)"
+      },
+      {
+        "key": "alwaysShow",
+        "type": "boolean",
+        "label": "Show even when title bars are healthy"
+      }
     ]
   }
 }
