@@ -9,7 +9,8 @@ actually find again.
 ## What you get
 
 - **Traffic lights on every window** — red closes, yellow minimizes, green
-  zooms. Left-aligned, with the glyphs appearing on hover, like macOS.
+  zooms, carrying macOS's own marks: ✕, −, and the diagonal expand arrows that
+  replaced the old "+" in Yosemite. Left-aligned and 12px, like macOS.
 - **Drag the title bar** to move a window; **double-click** it to zoom.
 - **Drag any edge or corner** to resize, with no modifier key held.
 - **Minimize that is visible** — minimized windows become clickable chips in

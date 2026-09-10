@@ -109,11 +109,17 @@ if hl.plugin.hyprbars then
 
   -- Zoom: fills the screen below the bar, and restores to the exact previous
   -- size and position on a second click, like the macOS green button.
+  --
+  -- The glyph is the diagonal expand arrows macOS has shown here since
+  -- Yosemite; the older "+" only survives on dialogs that cannot go full
+  -- screen. Material Design's fullscreen glyphs matched more closely on paper
+  -- but render as empty circles through hyprbars' hardcoded "sans" font, so
+  -- this is the closest icon that actually draws.
   hl.plugin.hyprbars.add_button({
     bg_color = "rgb(28c840)",
     fg_color = "rgb(000000)",
     size = 12,
-    icon = "",
+    icon = "",
     action = [[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
   })
 else
