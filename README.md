@@ -112,6 +112,10 @@ is plainly visible.
 `patches/center-button-icons.py` centres the glyph inside the very same rounded
 box the circle is drawn into.
 
+`patches/drag-snap-hooks.py` calls `macos-drag-snap` when hyprbars starts and
+ends a title-bar drag, which is the only way to know about the drag people
+actually perform.
+
 `patches/mirror-button-icons.py` adds an optional `mirror` field to
 `add_button`. macOS runs the green button's arrows on the NW-SE diagonal;
 Nerd Font's `arrow-expand` runs NE-SW, no installed font carries the mirrored
@@ -138,10 +142,15 @@ together fill the region exactly, with nothing tucked behind the bar.
 
 ## How drag-snapping works
 
-Hyprland exposes no drag events, so the press and release of the very same
-`SUPER` + left-drag that already moves a window mark the start and end of one.
-Both bindings are **non-consuming**, so Omarchy's own move binding still runs
-and dragging behaves exactly as it did before.
+Hyprland exposes no drag events, so drags are picked up from two places:
+
+- **Dragging the title bar** — hyprbars listens to pointer events itself and
+  moves the window directly, so no Hyprland binding ever sees that drag.
+  `patches/drag-snap-hooks.py` calls out from the two points hyprbars already
+  knows about, where it begins and ends a drag.
+- **`SUPER` + drag** — bound on press and release. Both bindings are
+  **non-consuming**, so Omarchy's own move binding still runs and dragging
+  behaves exactly as it did before.
 
 While the button is held, a watcher follows the cursor over Hyprland's command
 socket — about 0.03 ms per read, so 60 Hz costs nothing, and only for as long

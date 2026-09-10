@@ -15,14 +15,42 @@ following it at 60 Hz costs nothing, and only for as long as the button is down.
 import json
 import os
 import socket
+import shutil
 import subprocess
 import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-STATE = os.path.join(
-    os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "cupertino-drag.json"
-)
+RUNTIME = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+STATE = os.path.join(RUNTIME, "cupertino-drag.json")
+# Overwritten at the start of each drag, so it never grows. Read it with
+# `cat $XDG_RUNTIME_DIR/cupertino-drag.log` if snapping ever misbehaves.
+LOG = os.path.join(RUNTIME, "cupertino-drag.log")
+
+
+def log(message, reset=False):
+    try:
+        with open(LOG, "w" if reset else "a") as handle:
+            handle.write(message + "\n")
+    except OSError:
+        pass
+
+
+def shell_tool(name):
+    """Resolve a helper by absolute path.
+
+    These run from Hyprland's exec, whose PATH we do not control, so fall back
+    to the known install locations rather than trusting the environment.
+    """
+    found = shutil.which(name)
+    if found:
+        return found
+    for base in ("/usr/share/omarchy/bin", "/usr/bin", "/usr/local/bin",
+                 os.path.expanduser("~/.local/bin")):
+        candidate = os.path.join(base, name)
+        if os.path.exists(candidate):
+            return candidate
+    return name
 
 # How close to an edge counts as "on" it, and how far along an edge still
 # counts as its corner.
@@ -131,10 +159,16 @@ def box_for(region):
 
 
 def overlay(method, payload=None):
-    args = ["omarchy-shell", "cupertino-snap", method]
+    args = [shell_tool("omarchy-shell"), "cupertino-snap", method]
     if payload is not None:
         args.append(json.dumps(payload))
-    subprocess.run(args, capture_output=True, text=True)
+    # omarchy-shell needs OMARCHY_PATH, and this runs from Hyprland's exec
+    # where we cannot count on the session environment carrying it.
+    env = dict(os.environ)
+    env.setdefault("OMARCHY_PATH", "/usr/share/omarchy")
+    result = subprocess.run(args, capture_output=True, text=True, env=env)
+    if result.returncode != 0 or "not found" in (result.stdout + result.stderr):
+        log("overlay %s failed: %s%s" % (method, result.stdout.strip(), result.stderr.strip()))
 
 
 def watch():
@@ -163,6 +197,7 @@ def watch():
 
 def start():
     pos = cursor_pos()
+    log("drag start at %s" % (pos,), reset=True)
     if not pos:
         return
     with open(STATE, "w") as handle:
@@ -199,10 +234,12 @@ def end():
         return
     travelled = abs(pos[0] - began["x"]) + abs(pos[1] - began["y"])
     if travelled < MIN_TRAVEL:
+        log("drag end: only travelled %d px, ignoring" % travelled)
         return
 
     mons = monitors()
     region = region_at(mons, *pos)
+    log("drag end at %s, travelled %d, region %s" % (pos, travelled, region))
     if region:
         subprocess.run([os.path.join(HERE, "macos-snap"), region],
                        capture_output=True, text=True)
