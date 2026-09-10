@@ -99,7 +99,10 @@ hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })'   # works
 
 Minimized windows are restored to your current workspace first.
 
-## A patch to hyprbars
+## Patches to hyprbars
+
+Two small build-time patches, both cosmetic and both skipped with a note (never
+a build failure) if upstream changes:
 
 hyprbars draws each coloured dot into a box it rounds to whole pixels, but
 positions the glyph from the same arithmetic *without* rounding. At a
@@ -107,10 +110,13 @@ macOS-sized 12px dot that lands the glyph about a pixel left of centre, which
 is plainly visible.
 
 `patches/center-button-icons.py` centres the glyph inside the very same rounded
-box the circle is drawn into. `rebuild-hyprbars` applies it at build time, and
-skips it with a note (rather than failing) if upstream ever changes that code,
-so a future Hyprland release can never leave you without title bars over a
-cosmetic fix.
+box the circle is drawn into.
+
+`patches/icon-render-room.py` fixes two more: the glyph was drawn at
+`size * 0.62`, leaving 7px on a macOS-sized dot — small enough that thin
+strokes vanish — and the text was laid out with `maxWidth` equal to the dot,
+truncating anything wider. It raises the scale slightly and lets the layout use
+the room it needs.
 
 ## Staying clear of the bar
 
