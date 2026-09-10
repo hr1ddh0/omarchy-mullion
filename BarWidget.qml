@@ -180,11 +180,77 @@ BarWidget {
     }
   }
 
+  // The mark: a rounded window whose left pane is filled -- the two things
+  // this plugin does, dress a window's frame and split the screen. Drawn
+  // rather than borrowed from an icon font, so it collides with nothing else
+  // in anyone's bar, and it inks itself from the theme like every other icon.
+  Component {
+    id: markComponent
+
+    Canvas {
+      id: mark
+      readonly property color ink: button.foreground !== undefined
+        ? button.foreground : Color.foreground
+
+      onInkChanged: mark.requestPaint()
+      onWidthChanged: mark.requestPaint()
+
+      onPaint: {
+        var ctx = getContext("2d")
+        ctx.reset()
+        if (width <= 0 || height <= 0) return
+
+        // Landscape, because a window is wider than it is tall. The icon slot
+        // is square, so the frame is inset vertically to get there.
+        var w = Math.round(width * 0.80)
+        var h = Math.round(w * 0.76)
+        var pad = Math.round((width - w) / 2)
+        var top = Math.round((height - h) / 2)
+        var r = Math.max(1, Math.round(w * 0.18))
+        var split = pad + Math.round(w * 0.38)
+
+        ctx.strokeStyle = ink
+        ctx.fillStyle = ink
+        ctx.lineWidth = Math.max(1, Math.round(width * 0.075))
+
+        function frame() {
+          ctx.beginPath()
+          ctx.moveTo(pad + r, top)
+          ctx.lineTo(pad + w - r, top)
+          ctx.quadraticCurveTo(pad + w, top, pad + w, top + r)
+          ctx.lineTo(pad + w, top + h - r)
+          ctx.quadraticCurveTo(pad + w, top + h, pad + w - r, top + h)
+          ctx.lineTo(pad + r, top + h)
+          ctx.quadraticCurveTo(pad, top + h, pad, top + h - r)
+          ctx.lineTo(pad, top + r)
+          ctx.quadraticCurveTo(pad, top, pad + r, top)
+          ctx.closePath()
+        }
+
+        frame()
+        ctx.stroke()
+
+        // Filled left pane: the snapped half.
+        ctx.save()
+        frame()
+        ctx.clip()
+        ctx.fillRect(pad, top, split - pad, h)
+        ctx.restore()
+      }
+    }
+  }
+
   BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.busy ? "\uf110" : root.glyph
+    // Healthy state draws its own mark below rather than borrowing a font
+    // glyph, so the icon is this plugin's and nobody else's. The unhealthy
+    // states keep a glyph, because they need to read as a warning.
+    text: root.busy ? "\uf110" : (root.state === "healthy" ? "" : root.glyph)
+    // BarIconButton's own extension point: when set, it renders this in place
+    // of a font glyph, correctly sized and optically centred for the bar.
+    iconComponent: (root.state === "healthy" && !root.busy) ? markComponent : null
     slotSize: Style.bar.statusSlot
     fontSize: Style.font.caption
     tooltipText: root.tooltip
@@ -309,6 +375,33 @@ BarWidget {
         font.family: Style.font.family
         font.pixelSize: Style.font.subtitle
         font.bold: true
+      }
+
+      PanelSectionHeader { text: "Window controls" }
+
+      // Which platform's controls to wear. Snapping, split screen and
+      // edge-resize are identical whichever is chosen, so they are not
+      // mentioned here.
+      Row {
+        width: column.width
+        spacing: Style.space(6)
+
+        Repeater {
+          model: [
+            { key: "macos", label: "macOS" },
+            { key: "windows", label: "Windows" },
+            { key: "none", label: "None" }
+          ]
+
+          Button {
+            required property var modelData
+            width: (column.width - Style.space(12)) / 3
+            text: modelData.label
+            active: root.valueOf("window_style", "macos") === modelData.key
+            bordered: true
+            onClicked: root.put("window_style", modelData.key)
+          }
+        }
       }
 
       PanelSectionHeader { text: "Title bar" }

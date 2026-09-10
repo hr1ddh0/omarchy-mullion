@@ -25,6 +25,10 @@
 -- same file. Missing keys fall back to the defaults below, so a partial or
 -- absent file is always safe.
 local defaults = {
+  -- "macos"   traffic lights on the left, title centred
+  -- "windows" caption buttons on the right, title left, no coloured plates
+  -- "none"    title bar with no buttons at all
+  window_style = "macos",
   button_size = 12,
   bar_height = 28,
   icons_always_visible = true,
@@ -63,6 +67,47 @@ do
     file:close()
   end
 end
+
+
+-- ---------------------------------------------------------------------------
+-- Window style.
+--
+-- The two platforms differ in where the buttons sit, what they look like, how
+-- the title is aligned and how the window is lifted off the desktop. Snapping
+-- and edge-resize are identical in both, so they live outside this.
+local style = settings.window_style
+if style ~= "windows" and style ~= "none" then
+  style = "macos"
+end
+
+-- Colours from the active theme, handed over by
+-- ~/.config/omarchy/themed/hyprland.lua.tpl earlier in this same parse.
+local theme = _G.cupertino_theme or {}
+local theme_foreground = theme.foreground or "#ffffff"
+
+-- macOS lifts a window with a large, very soft shadow. Windows 11 sits closer
+-- to the desktop: a tighter shadow with far less offset.
+local elevation = {
+  macos = { range = 32, offset = "0 10", alpha = "73", inactive = "38" },
+  windows = { range = 18, offset = "0 4", alpha = "66", inactive = "30" },
+  none = { range = 18, offset = "0 4", alpha = "66", inactive = "30" },
+}
+local lift = elevation[style]
+
+hl.config({
+  decoration = {
+    shadow = {
+      enabled = settings.shadow,
+      render_power = 3,
+      range = lift.range,
+      offset = lift.offset,
+      -- Neutral rather than accent-tinted: a coloured shadow at this size
+      -- reads as a smear, and the border is what carries the accent.
+      color = "rgba(000000" .. lift.alpha .. ")",
+      color_inactive = "rgba(000000" .. lift.inactive .. ")",
+    },
+  },
+})
 
 -- ---------------------------------------------------------------------------
 -- Window shape.
@@ -135,9 +180,14 @@ if hl.plugin.hyprbars then
         bar_button_padding = 8,
         bar_text_size = 11,
         bar_text_font = "JetBrainsMono Nerd Font",
-        bar_text_align = "center",
-        -- Traffic lights on the left, like macOS.
-        bar_buttons_alignment = "left",
+        -- Windows-style buttons have no plate, so the greying that unfocused
+        -- traffic lights want would draw three circles that should not exist.
+        inactive_button_color = style == "windows" and "rgba(00000000)"
+          or (_G.cupertino_theme and _G.cupertino_theme.muted) or "rgba(00000000)",
+        bar_text_align = style == "windows" and "left" or "center",
+        -- macOS puts its lights on the left; Windows its caption buttons on
+        -- the right.
+        bar_buttons_alignment = style == "windows" and "right" or "left",
         -- Keep the glyphs visible rather than hover-only: at this size they
         -- read as crisp marks, and always-on is easier to hit accurately.
         -- Set this back to true for strict macOS hover behavior.
@@ -151,54 +201,71 @@ if hl.plugin.hyprbars then
     },
   })
 
-  -- Buttons render left-to-right in the order they are added.
+  -- Buttons render in the order they are added: left-to-right when they sit on
+  -- the left, right-to-left when they sit on the right, so each style lists
+  -- them in the order that platform shows them.
   --
-  -- The glyphs are Nerd Font icons rather than the plain Unicode ✕ − + marks.
-  -- hyprbars draws the icon at size*0.62, so a macOS-sized 12px dot leaves
-  -- only 7px, and at 7px the thin Unicode strokes turn to mush. Nerd Font
-  -- icons are drawn to fill their cell, so they stay legible at that size.
-  -- hyprbars asks for "sans"; Pango falls back to an icon font for these
-  -- codepoints on its own.
+  -- macOS draws filled circles carrying the mark. Windows 11 draws no plate at
+  -- rest at all -- just the glyph on the bar, with the backplate appearing on
+  -- hover -- so its buttons use a fully transparent background and take their
+  -- colour from the theme's foreground.
+  if style == "macos" then
+    hl.plugin.hyprbars.add_button({
+      bg_color = "rgb(ff5f57)",
+      fg_color = "rgb(000000)",
+      size = settings.button_size,
+      icon = "",
+      action = [[hyprctl dispatch 'hl.dsp.window.close()']],
+    })
 
-  -- Close.
-  hl.plugin.hyprbars.add_button({
-    bg_color = "rgb(ff5f57)",
-    fg_color = "rgb(000000)",
-    size = settings.button_size,
-    icon = "",
-    action = [[hyprctl dispatch 'hl.dsp.window.close()']],
-  })
+    hl.plugin.hyprbars.add_button({
+      bg_color = "rgb(febc2e)",
+      fg_color = "rgb(000000)",
+      size = settings.button_size,
+      icon = "",
+      action = [[hyprctl dispatch 'hl.dsp.window.move({ workspace = "special:omarchy-minimized", follow = false })']],
+    })
 
-  -- Minimize. Hyprland has no minimize, so this parks the window on the
-  -- window-shelf workspace. The shelf widget in the left of the top bar then
-  -- shows it as a clickable chip -- click the chip to bring it back.
-  hl.plugin.hyprbars.add_button({
-    bg_color = "rgb(febc2e)",
-    fg_color = "rgb(000000)",
-    size = settings.button_size,
-    icon = "",
-    action = [[hyprctl dispatch 'hl.dsp.window.move({ workspace = "special:omarchy-minimized", follow = false })']],
-  })
+    hl.plugin.hyprbars.add_button({
+      bg_color = "rgb(28c840)",
+      fg_color = "rgb(000000)",
+      size = settings.button_size,
+      icon = "",
+      mirror = true,
+      action = [[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
+    })
+  elseif style == "windows" then
+    -- Minimise, maximise, close -- reading left to right on screen, which is
+    -- the reverse of the order they are added when right-aligned.
+    hl.plugin.hyprbars.add_button({
+      bg_color = "rgba(00000000)",
+      fg_color = theme_foreground,
+      size = settings.button_size,
+      icon = "",
+      action = [[hyprctl dispatch 'hl.dsp.window.close()']],
+    })
 
-  -- Zoom: fills the screen below the bar, and restores to the exact previous
-  -- size and position on a second click, like the macOS green button.
-  --
-  -- The glyph is the pair of outward diagonal arrows macOS has shown here
-  -- since Yosemite; the older "+" now only appears on dialogs that cannot go
-  -- full screen. Chosen by rendering every plausible codepoint as a live
-  -- button and comparing them: several fullscreen glyphs draw as empty circles
-  -- through hyprbars' hardcoded "sans" family, and a two-glyph pair overflows
-  -- the dot. This one reads correctly at the size hyprbars allows.
-  hl.plugin.hyprbars.add_button({
-    bg_color = "rgb(28c840)",
-    fg_color = "rgb(000000)",
-    size = settings.button_size,
-    icon = "󰘖",
-    -- The font's arrows run NE-SW; macOS runs them NW-SE and no installed
-    -- font carries the mirrored twin, so the build patch flips the glyph.
-    mirror = true,
-    action = [[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
-  })
+    hl.plugin.hyprbars.add_button({
+      bg_color = "rgba(00000000)",
+      fg_color = theme_foreground,
+      size = settings.button_size,
+      -- A plain square outline, which is what Windows 11 draws. The icon-font
+      -- "window maximise" glyphs all carry a filled title-bar strip and read
+      -- as a different mark at this size.
+      icon = "□",
+      action = [[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
+    })
+
+    hl.plugin.hyprbars.add_button({
+      bg_color = "rgba(00000000)",
+      fg_color = theme_foreground,
+      size = settings.button_size,
+      icon = "",
+      action = [[hyprctl dispatch 'hl.dsp.window.move({ workspace = "special:omarchy-minimized", follow = false })']],
+    })
+  end
+  -- style == "none": a bar to drag and a title, and nothing to click.
+
 else
   -- The plugin loaded during this very parse, so its Lua API only becomes
   -- visible on the next one. Re-read the config once to pick it up.

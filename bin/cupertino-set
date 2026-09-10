@@ -21,6 +21,15 @@ DEFAULTS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # Keys whose change needs the app window-button sweep re-run.
 APP_BUTTON_KEYS = {"hide_app_window_buttons"}
 
+# Switching platform should look like that platform, so the dimensions each one
+# uses come along with it. Anything the user then tunes by hand stays tuned,
+# because only a style change writes these.
+STYLE_PRESETS = {
+    "macos": {"bar_height": 28, "button_size": 12, "rounding": 10},
+    "windows": {"bar_height": 32, "button_size": 14, "rounding": 8},
+    "none": {"bar_height": 28, "rounding": 10},
+}
+
 
 def read(path=CONF):
     values = {}
@@ -111,6 +120,11 @@ def main():
             sys.exit("expected key=value, got %r" % arg)
         key, _, value = arg.partition("=")
         updates[key.strip()] = value.strip()
+
+    if "window_style" in updates:
+        preset = STYLE_PRESETS.get(updates["window_style"], {})
+        for key, value in preset.items():
+            updates.setdefault(key, str(value))
 
     write(updates)
     apply(set(updates))
