@@ -1,0 +1,38 @@
+#!/bin/bash
+# Rebuild the hyprbars title-bar plugin against the running Hyprland.
+#
+# Hyprland plugins are tied to the exact Hyprland build they were compiled
+# against, so run this after an `omarchy update` that bumps Hyprland. Until you
+# do, title bars simply won't appear -- nothing else breaks.
+set -euo pipefail
+
+DEST="$HOME/.local/share/hyprland/plugins/hyprbars.so"
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+HL_COMMIT=$(hyprctl version -j | sed -n 's/.*"commit": *"\([^"]*\)".*/\1/p')
+[[ -n $HL_COMMIT ]] || { echo "Could not read the Hyprland commit from hyprctl."; exit 1; }
+echo "Hyprland commit: $HL_COMMIT"
+
+git clone --quiet --depth 1 https://github.com/hyprwm/hyprland-plugins.git "$WORK/hlp"
+
+# hyprpm.toml pins each Hyprland commit to the plugin commit that builds against it.
+PIN=$(grep -F "$HL_COMMIT" "$WORK/hlp/hyprpm.toml" | grep -oP '(?<=", ")[0-9a-f]{40}' | head -1)
+if [[ -z $PIN ]]; then
+  echo "No pin for this Hyprland commit yet; building from the latest plugin source."
+else
+  echo "Plugin commit:   $PIN"
+  git -C "$WORK/hlp" fetch --quiet --depth 1 origin "$PIN"
+  git -C "$WORK/hlp" checkout --quiet FETCH_HEAD
+fi
+
+make -C "$WORK/hlp/hyprbars" all >/dev/null
+mkdir -p "$(dirname "$DEST")"
+install -m755 "$WORK/hlp/hyprbars/hyprbars.so" "$DEST"
+echo "Installed $DEST"
+
+hyprctl plugin unload "$DEST" >/dev/null 2>&1 || true
+hyprctl reload >/dev/null 2>&1 || true
+sleep 1
+hyprctl reload >/dev/null 2>&1 || true
+echo "Reloaded. Title bars should be back."

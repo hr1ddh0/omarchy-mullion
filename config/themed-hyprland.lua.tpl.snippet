@@ -1,0 +1,28 @@
+-- Append to ~/.config/omarchy/themed/hyprland.lua.tpl (create it by copying
+-- $OMARCHY_PATH/default/themed/hyprland.lua.tpl first). Makes the title bar and
+-- the focused-window glow follow whichever Omarchy theme is active.
+
+-- Neon glow on the focused window, tinted with the current theme's accent.
+hl.config({
+  decoration = {
+    shadow = {
+      enabled = true,
+      range = 26,
+      render_power = 3,
+      color = "rgba({{ accent_strip }}33)",
+      color_inactive = "rgba(00000000)",
+    },
+  },
+})
+
+if hl.plugin and hl.plugin.hyprbars then
+  hl.config({
+    plugin = {
+      hyprbars = {
+        bar_color = "rgba({{ lighter_background_strip }}f2)",
+        col = { text = "rgba({{ foreground_strip }}ff)" },
+        inactive_button_color = "rgba({{ muted_strip }}ff)",
+      },
+    },
+  })
+end
