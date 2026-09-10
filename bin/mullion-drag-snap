@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Drag a window to a screen edge to snap it there, with a live preview.
 
-    macos-drag-snap start   # bound to SUPER + left-mouse press
-    macos-drag-snap end     # bound to the matching release
+    mullion-drag-snap start   # bound to SUPER + left-mouse press
+    mullion-drag-snap end     # bound to the matching release
 
 While the mouse button is held, a watcher follows the cursor and asks the
 Mullion bar widget to draw a translucent highlight over the region the window
@@ -170,9 +170,9 @@ def region_at(mons, x, y):
 
 
 def snap_module():
-    """Import macos-snap so its geometry runs in-process.
+    """Import mullion-snap so its geometry runs in-process.
 
-    Shelling out to `macos-snap --box` cost ~23ms of interpreter start on every
+    Shelling out to `mullion-snap --box` cost ~23ms of interpreter start on every
     zone change -- a visible hitch at the moment crossing an edge has to feel
     instant. Importing it keeps one source of truth for the geometry while
     making a zone change pure arithmetic.
@@ -180,7 +180,7 @@ def snap_module():
     import importlib.util
     from importlib.machinery import SourceFileLoader
 
-    path = os.path.join(HERE, "macos-snap")
+    path = os.path.join(HERE, "mullion-snap")
     loader = SourceFileLoader("macos_snap", path)
     spec = importlib.util.spec_from_loader("macos_snap", loader)
     module = importlib.util.module_from_spec(spec)
@@ -202,7 +202,7 @@ def overlay(method, payload=None, wait=False):
     Fire-and-forget by default: the reply is of no use mid-drag, and waiting on
     it stalled the cursor loop for ~21ms every time the region changed.
     """
-    args = [shell_tool("omarchy-shell"), "-q", "mullion-snap", method]
+    args = [shell_tool("omarchy-shell"), "-q", "mullion-preview", method]
     if payload is not None:
         args.append(json.dumps(payload))
     # omarchy-shell needs OMARCHY_PATH, and this runs from Hyprland's exec
@@ -325,7 +325,7 @@ def end():
         # belongs to the arrow keys, where a second direction refines the
         # first; applying it here would turn a drag to the left edge into a
         # quarter whenever the window happened to be half-height already.
-        subprocess.run([os.path.join(HERE, "macos-snap"), "--exact", region],
+        subprocess.run([os.path.join(HERE, "mullion-snap"), "--exact", region],
                        capture_output=True, text=True)
     else:
         keep_below_bar(mons)
@@ -381,4 +381,4 @@ if __name__ == "__main__":
         pos = cursor_pos()
         print(region_at(monitors(), *pos) if pos else "no cursor")
     else:
-        sys.exit("usage: macos-drag-snap start|end|region")
+        sys.exit("usage: mullion-drag-snap start|end|region")

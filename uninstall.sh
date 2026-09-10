@@ -26,8 +26,8 @@ PY
 say "Removing the plugin binary"
 rm -f "$HOME/.local/share/hyprland/plugins/hyprbars.so" \
       "$HOME/.local/bin/rebuild-hyprbars" \
-      "$HOME/.local/bin/macos-snap" \
-      "$HOME/.local/bin/macos-drag-snap" \
+      "$HOME/.local/bin/mullion-snap" \
+      "$HOME/.local/bin/mullion-drag-snap" \
       "$HOME/.local/bin/use-system-titlebars" \
       "$HOME/.local/bin/mullion-set"
 rm -rf "$HOME/.local/share/mullion"

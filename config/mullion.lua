@@ -214,7 +214,7 @@ if hl.plugin.hyprbars then
       bg_color = "rgb(ff5f57)",
       fg_color = "rgb(000000)",
       size = settings.button_size,
-      icon = "",
+      icon = "",
       action = [[hyprctl dispatch 'hl.dsp.window.close()']],
     })
 
@@ -222,7 +222,7 @@ if hl.plugin.hyprbars then
       bg_color = "rgb(febc2e)",
       fg_color = "rgb(000000)",
       size = settings.button_size,
-      icon = "",
+      icon = "",
       action = [[hyprctl dispatch 'hl.dsp.window.move({ workspace = "special:omarchy-minimized", follow = false })']],
     })
 
@@ -230,7 +230,7 @@ if hl.plugin.hyprbars then
       bg_color = "rgb(28c840)",
       fg_color = "rgb(000000)",
       size = settings.button_size,
-      icon = "",
+      icon = "󰘖",
       mirror = true,
       action = [[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
     })
@@ -297,16 +297,16 @@ hl.unbind("SUPER + RIGHT")
 hl.unbind("SUPER + UP")
 hl.unbind("SUPER + DOWN")
 
-o.bind("SUPER + LEFT", "Snap window left / quarter", "macos-snap left")
-o.bind("SUPER + RIGHT", "Snap window right / quarter", "macos-snap right")
-o.bind("SUPER + UP", "Snap window up / quarter", "macos-snap top")
-o.bind("SUPER + DOWN", "Snap window down / quarter", "macos-snap bottom")
+o.bind("SUPER + LEFT", "Snap window left / quarter", "mullion-snap left")
+o.bind("SUPER + RIGHT", "Snap window right / quarter", "mullion-snap right")
+o.bind("SUPER + UP", "Snap window up / quarter", "mullion-snap top")
+o.bind("SUPER + DOWN", "Snap window down / quarter", "mullion-snap bottom")
 
 -- Arrows compose, exactly like Windows Snap: LEFT then UP puts the window in
 -- the top-left quarter, so four apps tile a workspace with two presses each.
 -- That is the whole split-screen surface -- no second set of keys for it.
 --
--- `macos-snap full` and `center` still exist as commands if you ever want to
+-- `mullion-snap full` and `center` still exist as commands if you ever want to
 -- bind them, but full screen is already SUPER+F and the green title-bar
 -- button, so they are deliberately left unbound.
 
@@ -322,8 +322,8 @@ o.bind("SUPER + DOWN", "Snap window down / quarter", "macos-snap bottom")
 -- binds are non-consuming, so Omarchy's own "Move window" binding still runs
 -- and the drag itself behaves exactly as before -- if this is removed, nothing
 -- about dragging changes.
-o.bind("SUPER + mouse:272", "Begin drag-snap", "macos-drag-snap start", { non_consuming = true })
-o.bind("SUPER + mouse:272", "Finish drag-snap", "macos-drag-snap end", { non_consuming = true, release = true })
+o.bind("SUPER + mouse:272", "Begin drag-snap", "mullion-drag-snap start", { non_consuming = true })
+o.bind("SUPER + mouse:272", "Finish drag-snap", "mullion-drag-snap end", { non_consuming = true, release = true })
 
 -- ---------------------------------------------------------------------------
 -- Mac muscle memory. SUPER stands in for Command.

@@ -6,7 +6,7 @@ its title bar, so a Hyprland mouse binding never sees that drag -- only
 SUPER+drag reaches one. Dragging a window by its title bar, which is what
 anyone actually does, therefore produced no snap preview at all.
 
-This calls macos-drag-snap at the two points hyprbars already knows about:
+This calls mullion-drag-snap at the two points hyprbars already knows about:
 handleMovement() when a title-bar drag begins, and handleUpEvent() when one
 ends. It reuses the same "exec" dispatcher hyprbars uses for button actions.
 
@@ -15,7 +15,7 @@ Usage: drag-snap-hooks.py <hyprbars source dir>
 import os
 import sys
 
-SNAP = '$HOME/.local/bin/macos-drag-snap'
+SNAP = '$HOME/.local/bin/mullion-drag-snap'
 
 EDITS = [
     # Drag begins.

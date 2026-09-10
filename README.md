@@ -161,7 +161,7 @@ is plainly visible.
 `patches/center-button-icons.py` centres the glyph inside the very same rounded
 box the circle is drawn into.
 
-`patches/drag-snap-hooks.py` calls `macos-drag-snap` when hyprbars starts and
+`patches/drag-snap-hooks.py` calls `mullion-drag-snap` when hyprbars starts and
 ends a title-bar drag, which is the only way to know about the drag people
 actually perform.
 
@@ -207,7 +207,7 @@ are actually dragging. A drag shorter than 24 px is ignored, so a plain
 `SUPER`+click near an edge never rearranges anything.
 
 Every frame is arithmetic and one socket read: **0.076 ms**, against a 16.7 ms
-budget at 60 Hz. The geometry is imported from `macos-snap` rather than shelled
+budget at 60 Hz. The geometry is imported from `mullion-snap` rather than shelled
 out to, so one source of truth is kept without paying 23 ms of interpreter
 start per region change, and the overlay call is fire-and-forget rather than
 waiting 21 ms on a reply. Overlay updates are floored at 50 ms apart so a fast

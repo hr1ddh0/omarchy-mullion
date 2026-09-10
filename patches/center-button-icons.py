@@ -7,7 +7,8 @@ macOS-sized 12px dot the glyph lands about a pixel left of centre, which is
 plainly visible.
 
 This centres the glyph inside the very same rounded box the circle is drawn
-into, so the two cannot disagree.
+into, so the two cannot disagree, and floors the result so that any half-pixel
+residue falls the same way for every glyph rather than varying per icon.
 
 Usage: center-button-icons.py <hyprbars source dir>
 """
@@ -24,8 +25,14 @@ NEW = """        // Centre the glyph inside the same rounded box renderBarButton
         CBox iconButtonBox = {barBox->x + (BUTTONSRIGHT ? barBox->w - offset - scaledButtonSize : offset), barBox->y + (barBox->h - scaledButtonSize) / 2.0, scaledButtonSize,
                               scaledButtonSize};
         iconButtonBox.round();
-        const auto iconX = std::round(iconButtonBox.x + (iconButtonBox.w - button.iconTex->m_size.x) / 2.0);
-        const auto iconY = std::round(iconButtonBox.y + (iconButtonBox.h - button.iconTex->m_size.y) / 2.0);
+        // Floor rather than round. A glyph whose texture is an odd number of
+        // pixels wide cannot sit dead centre in an even-width dot, so half a
+        // pixel has to go somewhere; rounding sent it left for some glyphs and
+        // right for others, and a row of marks each off a different way is what
+        // actually reads as misaligned. Flooring puts every glyph's residue on
+        // the same side, so the row lines up with itself.
+        const auto iconX = std::floor(iconButtonBox.x + (iconButtonBox.w - button.iconTex->m_size.x) / 2.0);
+        const auto iconY = std::floor(iconButtonBox.y + (iconButtonBox.h - button.iconTex->m_size.y) / 2.0);
         CBox       pos   = {iconX, iconY, button.iconTex->m_size.x, button.iconTex->m_size.y};"""
 
 

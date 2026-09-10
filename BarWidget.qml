@@ -267,9 +267,9 @@ BarWidget {
   // ---------------------------------------------------------------------
   // Drag-to-edge snap preview.
   //
-  // macos-drag-snap follows the cursor while a window is being dragged and
+  // mullion-drag-snap follows the cursor while a window is being dragged and
   // pushes the target rectangle here, so you see where the window will land
-  // before letting go. The rectangle is computed by macos-snap itself, so the
+  // before letting go. The rectangle is computed by mullion-snap itself, so the
   // preview can never disagree with the snap that follows.
   //
   // The bar builds one widget per monitor but an IPC target routes to a single
@@ -289,7 +289,7 @@ BarWidget {
   }
 
   IpcHandler {
-    target: "mullion-snap"
+    target: "mullion-preview"
 
     function show(payloadJson: string): string {
       var box = null
@@ -312,7 +312,7 @@ BarWidget {
 
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "mullion-snap"
+    WlrLayershell.namespace: "mullion-preview"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Snap the focused window to a half / full / centered region of its monitor.
 
-    macos-snap left | right | top | bottom | full | center [window-address]
+    mullion-snap left | right | top | bottom | full | center [window-address]
 
 Acts on the focused window unless an explicit Hyprland address is given.
 
@@ -148,7 +148,7 @@ def main():
         return
 
     if len(sys.argv) not in (2, 3) or sys.argv[1] not in REGIONS:
-        sys.exit("usage: macos-snap [--exact] " + " | ".join(REGIONS) + " [window-address]")
+        sys.exit("usage: mullion-snap [--exact] " + " | ".join(REGIONS) + " [window-address]")
     region = sys.argv[1]
 
     if len(sys.argv) == 3:
