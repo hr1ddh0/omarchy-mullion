@@ -69,9 +69,16 @@ if ! grep -q "hyprbars" "$TPL"; then
 fi
 
 say "Reloading Hyprland"
+# The plugin's Lua API only appears on the config parse AFTER the one that
+# loaded it, so the buttons register on this second pass.
 hyprctl reload >/dev/null 2>&1 || true
 sleep 1
-hyprctl reload >/dev/null 2>&1 || true   # second pass: plugin Lua API appears here
+hyprctl reload >/dev/null 2>&1 || true
+sleep 1
 hyprctl configerrors || true
 
-say "Done. Traffic lights on every window; minimized windows appear as chips in the bar."
+if hyprctl plugin list 2>/dev/null | grep -q hyprbars; then
+  say "Done. Traffic lights on every window; minimized windows appear as chips in the bar."
+else
+  say "Installed, but the title-bar plugin is not loaded yet. Log out and back in."
+fi

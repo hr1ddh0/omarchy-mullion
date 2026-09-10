@@ -31,8 +31,21 @@ mkdir -p "$(dirname "$DEST")"
 install -m755 "$WORK/hlp/hyprbars/hyprbars.so" "$DEST"
 echo "Installed $DEST"
 
+# A config reload will NOT re-load a plugin that was unloaded mid-session --
+# only an explicit `plugin load` does. Relying on the reload alone leaves you
+# with no title bars until the next login.
 hyprctl plugin unload "$DEST" >/dev/null 2>&1 || true
+sleep 1
+hyprctl plugin load "$DEST" >/dev/null 2>&1 || true
+sleep 1
+# Now reload the config so the plugin's Lua API is visible and the buttons
+# register against it.
 hyprctl reload >/dev/null 2>&1 || true
 sleep 1
-hyprctl reload >/dev/null 2>&1 || true
-echo "Reloaded. Title bars should be back."
+
+if hyprctl plugin list 2>/dev/null | grep -q hyprbars; then
+  echo "Reloaded. Title bars are back."
+else
+  echo "The plugin did not load. Log out and back in, or check: hyprctl plugin list"
+  exit 1
+fi
