@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""Stop Chromium-family browsers drawing their own window buttons.
+
+With title bars from this plugin, a browser that also draws its own frame gives
+you two sets of window controls -- ours on the title bar, and its close button
+at the right of the tab strip. Chromium calls the setting "Use system title bar
+and borders"; turned on, it drops its buttons and uses the title bar instead.
+
+Chromium rewrites its Preferences file on exit, so this refuses to touch a
+profile whose browser is running rather than having the change silently undone.
+
+    use-system-titlebars          # apply
+    use-system-titlebars --check  # report only
+"""
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+# config dir -> process names that own it
+BROWSERS = {
+    "chromium": ("chromium", "chromium-browser"),
+    "google-chrome": ("chrome", "google-chrome"),
+    "google-chrome-beta": ("chrome", "google-chrome-beta"),
+    "BraveSoftware/Brave-Browser": ("brave", "brave-browser"),
+    "microsoft-edge": ("msedge", "microsoft-edge"),
+    "vivaldi": ("vivaldi-bin", "vivaldi"),
+}
+
+
+def running(names):
+    for name in names:
+        if subprocess.run(["pgrep", "-x", name],
+                          capture_output=True).returncode == 0:
+            return True
+    return False
+
+
+def profiles(config_dir):
+    """Every profile directory holding a Preferences file."""
+    found = []
+    if not os.path.isdir(config_dir):
+        return found
+    for entry in sorted(os.listdir(config_dir)):
+        if entry == "Default" or entry.startswith("Profile "):
+            path = os.path.join(config_dir, entry, "Preferences")
+            if os.path.isfile(path):
+                found.append(path)
+    return found
+
+
+def apply(path, check):
+    try:
+        with open(path) as handle:
+            prefs = json.load(handle)
+    except (OSError, ValueError) as exc:
+        print("    could not read %s (%s)" % (path, exc))
+        return False
+
+    current = prefs.get("browser", {}).get("custom_chrome_frame")
+    if current is False:
+        print("    already using the system title bar")
+        return False
+    if check:
+        print("    would turn off its own window frame")
+        return True
+
+    shutil.copy2(path, path + ".bak")
+    prefs.setdefault("browser", {})["custom_chrome_frame"] = False
+    with open(path, "w") as handle:
+        json.dump(prefs, handle, separators=(",", ":"))
+    print("    done (previous file kept as Preferences.bak)")
+    return True
+
+
+def main():
+    check = "--check" in sys.argv[1:]
+    config = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    touched = False
+    seen = False
+
+    for subdir, names in BROWSERS.items():
+        found = profiles(os.path.join(config, subdir))
+        if not found:
+            continue
+        seen = True
+        print("  %s" % subdir)
+        if running(names):
+            print("    running right now -- close it and run this again, or it"
+                  " will rewrite the file on exit")
+            continue
+        for path in found:
+            touched |= apply(path, check)
+
+    if not seen:
+        print("  no Chromium-family browser configured; nothing to do")
+    elif touched and not check:
+        print("\nRestart the browser to pick this up.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

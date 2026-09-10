@@ -17,6 +17,29 @@
 -- The old form fails silently -- the button would look fine and do nothing.
 
 -- ---------------------------------------------------------------------------
+-- Window shape.
+--
+-- Rounded corners, and a border wide enough that the theme's accent gradient
+-- actually reads as a gradient rather than a hairline. The drop shadow that
+-- pairs with this lives in ~/.config/omarchy/themed/hyprland.lua.tpl, because
+-- it has to be re-emitted whenever the theme changes.
+--
+-- This loads after hypr/looknfeel.lua and so wins over it. If you would rather
+-- set these yourself, delete this block and they fall back to whatever your
+-- looknfeel.lua says.
+hl.config({
+  general = {
+    border_size = 3,
+    gaps_in = 6,
+    gaps_out = 12,
+  },
+
+  decoration = {
+    rounding = 10,
+  },
+})
+
+-- ---------------------------------------------------------------------------
 -- Resize by dragging edges and corners, the way every Mac window works.
 hl.config({
   general = {

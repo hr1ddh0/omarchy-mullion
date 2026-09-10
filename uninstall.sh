@@ -27,7 +27,8 @@ say "Removing the plugin binary"
 rm -f "$HOME/.local/share/hyprland/plugins/hyprbars.so" \
       "$HOME/.local/bin/rebuild-hyprbars" \
       "$HOME/.local/bin/macos-snap" \
-      "$HOME/.local/bin/macos-drag-snap"
+      "$HOME/.local/bin/macos-drag-snap" \
+      "$HOME/.local/bin/use-system-titlebars"
 rm -rf "$HOME/.local/share/cupertino"
 
 echo

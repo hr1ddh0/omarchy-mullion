@@ -19,6 +19,7 @@ mkdir -p "$HOME/.local/bin"
 install -m755 "$HERE/bin/rebuild-hyprbars" "$HOME/.local/bin/rebuild-hyprbars"
 install -m755 "$HERE/bin/macos-snap" "$HOME/.local/bin/macos-snap"
 install -m755 "$HERE/bin/macos-drag-snap" "$HOME/.local/bin/macos-drag-snap"
+install -m755 "$HERE/bin/use-system-titlebars" "$HOME/.local/bin/use-system-titlebars"
 
 # Patches applied to hyprbars at build time, kept where rebuild-hyprbars looks.
 mkdir -p "$HOME/.local/share/cupertino/patches"
@@ -81,6 +82,11 @@ if ! grep -q "hyprbars" "$TPL"; then
   cat "$HERE/config/themed-hyprland.lua.tpl.snippet" >> "$TPL"
   omarchy theme set "$(omarchy theme current)" >/dev/null 2>&1 || true
 fi
+
+say "Checking for browsers that draw their own window buttons"
+# A browser drawing its own frame gives you two sets of controls: ours on the
+# title bar, and its close button at the right of the tab strip.
+"$HOME/.local/bin/use-system-titlebars" || true
 
 say "Reloading Hyprland"
 # The plugin's Lua API only appears on the config parse AFTER the one that

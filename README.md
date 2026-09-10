@@ -52,6 +52,25 @@ The installer builds the title-bar plugin against your exact Hyprland build,
 installs the minimize widget, patches `~/.config/hypr/hyprland.lua` (keeping a
 timestamped backup), and reloads.
 
+## Browsers that draw their own buttons
+
+Chromium-family browsers draw their own window frame by default, so alongside
+this plugin's traffic lights you get a second, redundant close button at the
+right of the tab strip. `use-system-titlebars` turns that off (Chromium calls
+it "Use system title bar and borders"); the installer runs it for you.
+
+It refuses to touch a profile whose browser is running, because Chromium
+rewrites its preferences on exit and would silently undo the change. Close the
+browser and run it again:
+
+```bash
+use-system-titlebars          # apply
+use-system-titlebars --check  # report only, change nothing
+```
+
+You can also just right-click the tab strip and tick **Use system title bar and
+borders**, which is the same setting.
+
 ## Requirements
 
 - Omarchy 4.x with the Quickshell shell (Quickshell >= 0.3.0)
