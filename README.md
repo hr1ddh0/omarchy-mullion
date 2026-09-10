@@ -98,6 +98,17 @@ hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })'   # works
 
 Minimized windows are restored to your current workspace first.
 
+## Staying clear of the bar
+
+hyprbars always reserves its height **above** a window (`info.reserved` is
+hardcoded), so a window placed flush with the top of the usable area slides its
+title bar underneath the Omarchy bar. Hyprland offers no rule that clamps this.
+
+Every snap therefore reserves the title bar's height, reading it live from
+`plugin:hyprbars:bar_height` so it stays correct if you restyle the bar, and a
+freely dragged window is nudged back down on release. Window and title bar
+together fill the region exactly, with nothing tucked behind the bar.
+
 ## How drag-snapping works
 
 Hyprland exposes no drag events, so the press and release of the very same

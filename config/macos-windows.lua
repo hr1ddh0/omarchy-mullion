@@ -79,13 +79,20 @@ if hl.plugin.hyprbars then
   })
 
   -- Buttons render left-to-right in the order they are added.
+  --
+  -- The glyphs are Nerd Font icons rather than the plain Unicode ✕ − + marks.
+  -- hyprbars draws the icon at size*0.62, so a macOS-sized 12px dot leaves
+  -- only 7px, and at 7px the thin Unicode strokes turn to mush. Nerd Font
+  -- icons are drawn to fill their cell, so they stay legible at that size.
+  -- hyprbars asks for "sans"; Pango falls back to an icon font for these
+  -- codepoints on its own.
 
   -- Close.
   hl.plugin.hyprbars.add_button({
     bg_color = "rgb(ff5f57)",
-    fg_color = "rgb(2b0603)",
+    fg_color = "rgb(000000)",
     size = 12,
-    icon = "✕",
+    icon = "",
     action = [[hyprctl dispatch 'hl.dsp.window.close()']],
   })
 
@@ -94,9 +101,9 @@ if hl.plugin.hyprbars then
   -- shows it as a clickable chip -- click the chip to bring it back.
   hl.plugin.hyprbars.add_button({
     bg_color = "rgb(febc2e)",
-    fg_color = "rgb(3a2806)",
+    fg_color = "rgb(000000)",
     size = 12,
-    icon = "−",
+    icon = "",
     action = [[hyprctl dispatch 'hl.dsp.window.move({ workspace = "special:omarchy-minimized", follow = false })']],
   })
 
@@ -104,9 +111,9 @@ if hl.plugin.hyprbars then
   -- size and position on a second click, like the macOS green button.
   hl.plugin.hyprbars.add_button({
     bg_color = "rgb(28c840)",
-    fg_color = "rgb(05240b)",
+    fg_color = "rgb(000000)",
     size = 12,
-    icon = "+",
+    icon = "",
     action = [[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
   })
 else

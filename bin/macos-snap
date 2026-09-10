@@ -67,6 +67,33 @@ def usable_area(monitor):
     return (mx + left, my + top, mw - left - right, mh - top - bottom)
 
 
+def titlebar_height():
+    """Height hyprbars draws ABOVE a window, or 0 when it isn't loaded.
+
+    hyprbars paints its bar above the window's reported position, so a window
+    placed flush with the top of the usable area would push its title bar up
+    underneath the Omarchy bar. Every placement reserves this much room.
+    """
+    try:
+        out = subprocess.run(["hyprctl", "getoption", "plugin:hyprbars:bar_height"],
+                             capture_output=True, text=True, timeout=2)
+        for line in out.stdout.splitlines():
+            if line.strip().startswith("int:"):
+                return max(0, int(line.split(":", 1)[1].strip()))
+    except Exception:
+        pass
+    return 0
+
+
+def placement_boxes(monitor, bar=None):
+    """Region boxes adjusted so window + title bar together fill the region."""
+    bar = titlebar_height() if bar is None else bar
+    return {
+        name: (x, y + bar, w, max(1, h - bar))
+        for name, (x, y, w, h) in region_boxes(monitor).items()
+    }
+
+
 def region_boxes(monitor):
     """Every named region as (x, y, w, h), in logical pixels."""
     ux, uy, uw, uh = usable_area(monitor)
@@ -128,7 +155,8 @@ def main():
             sys.exit("no focused window")
 
     monitor = focused_monitor()
-    boxes = region_boxes(monitor)
+    # Preview/reporting uses the visual region; placement insets the title bar.
+    boxes = placement_boxes(monitor)
 
     # Compose with the window's current region so arrows behave like Windows.
     if region in ("left", "right", "top", "bottom"):

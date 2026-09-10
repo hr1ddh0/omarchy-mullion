@@ -201,10 +201,53 @@ def end():
     if travelled < MIN_TRAVEL:
         return
 
-    region = region_at(monitors(), *pos)
+    mons = monitors()
+    region = region_at(mons, *pos)
     if region:
         subprocess.run([os.path.join(HERE, "macos-snap"), region],
                        capture_output=True, text=True)
+    else:
+        keep_below_bar(mons)
+
+
+def titlebar_height():
+    try:
+        out = subprocess.run(["hyprctl", "getoption", "plugin:hyprbars:bar_height"],
+                             capture_output=True, text=True, timeout=2)
+        for line in out.stdout.splitlines():
+            if line.strip().startswith("int:"):
+                return max(0, int(line.split(":", 1)[1].strip()))
+    except Exception:
+        pass
+    return 0
+
+
+def keep_below_bar(mons):
+    """Stop a freely dragged window from parking its title bar under the bar.
+
+    hyprbars always reserves its height above the window, so dragging a window
+    to the very top slides that bar behind the Omarchy bar. Hyprland has no
+    rule that clamps this, so nudge the window back down on release.
+    """
+    try:
+        window = json.loads(hypr("j/activewindow"))
+    except Exception:
+        return
+    address = window.get("address")
+    at = window.get("at")
+    if not address or not at or not window.get("floating"):
+        return
+
+    mon = monitor_at(mons, at[0], at[1])
+    reserved_top = (mon.get("reserved") or [0, 0, 0, 0])[1]
+    lowest = mon["y"] + reserved_top + titlebar_height()
+
+    if at[1] < lowest:
+        subprocess.run(
+            ["hyprctl", "dispatch",
+             'hl.dsp.window.move({ window = "address:%s", x = %d, y = %d })'
+             % (address, at[0], lowest)],
+            capture_output=True, text=True)
 
 
 if __name__ == "__main__":
