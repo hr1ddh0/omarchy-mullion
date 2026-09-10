@@ -20,6 +20,17 @@ install -m755 "$HERE/bin/rebuild-hyprbars" "$HOME/.local/bin/rebuild-hyprbars"
 install -m755 "$HERE/bin/macos-snap" "$HOME/.local/bin/macos-snap"
 install -m755 "$HERE/bin/macos-drag-snap" "$HOME/.local/bin/macos-drag-snap"
 install -m755 "$HERE/bin/use-system-titlebars" "$HOME/.local/bin/use-system-titlebars"
+install -m755 "$HERE/bin/cupertino-set" "$HOME/.local/bin/cupertino-set"
+
+# Default settings, only if the user has none: an upgrade must never discard
+# what they have tuned.
+mkdir -p "$HOME/.config/omarchy"
+if [[ ! -f $HOME/.config/omarchy/cupertino.conf ]]; then
+  cp "$HERE/config/cupertino.conf" "$HOME/.config/omarchy/cupertino.conf"
+  echo "Wrote default settings to ~/.config/omarchy/cupertino.conf"
+else
+  echo "Keeping your existing ~/.config/omarchy/cupertino.conf"
+fi
 
 # Patches applied to hyprbars at build time, kept where rebuild-hyprbars looks.
 mkdir -p "$HOME/.local/share/cupertino/patches"

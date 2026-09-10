@@ -37,13 +37,16 @@ BarWidget {
     return path.charAt(path.length - 1) === "/" ? path : path + "/"
   }
 
-  readonly property string glyph: state === "missing" ? "\uf2d0" : "\uf021"
+  // Healthy: a window mark, which is the settings affordance. Otherwise the
+  // state's own glyph, and clicking fixes rather than opens settings.
+  readonly property string glyph: state === "healthy" ? "\uf2d0"
+    : state === "missing" ? "\uf0e7" : "\uf021"
 
   readonly property string tooltip: {
     if (busy) return "Working on the title bars..."
     if (state === "missing") return "macOS title bars are not set up yet.\nClick to install them."
     if (state === "unloaded") return "Title bars stopped loading, usually after a Hyprland update.\nClick to rebuild them."
-    return "macOS title bars are working."
+    return "Cupertino settings"
   }
 
   function refresh() {
@@ -68,15 +71,69 @@ BarWidget {
     recheck.restart()
   }
 
-  visible: alwaysShow || (state !== "healthy" && state !== "checking")
-  implicitWidth: visible ? button.implicitWidth : 0
-  implicitHeight: visible ? button.implicitHeight : 0
+  // Always present, because it is the way into the settings. The glyph and
+  // tooltip still carry the health state.
+  implicitWidth: button.implicitWidth
+  implicitHeight: button.implicitHeight
+
+  property bool settingsOpen: false
+  // Current values, read back from cupertino-set so the panel always shows
+  // what is really in the file rather than a guess.
+  property var values: ({})
+
+  function valueOf(key, fallback) {
+    var raw = values[key]
+    if (raw === undefined) return fallback
+    if (raw === "true") return true
+    if (raw === "false") return false
+    var num = Number(raw)
+    return isNaN(num) ? raw : num
+  }
+
+  function loadSettings() { if (!readProc.running) readProc.running = true }
+
+  function put(key, value) {
+    var next = {}
+    for (var k in values) next[k] = values[k]
+    next[key] = String(value)
+    values = next
+    writeProc.command = [root.helper("cupertino-set"), key + "=" + String(value)]
+    writeProc.running = true
+  }
+
+  function helper(name) { return Quickshell.env("HOME") + "/.local/bin/" + name }
+
+  Process {
+    id: readProc
+    command: [root.helper("cupertino-set"), "--list"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var parsed = {}
+        var lines = String(text).split("\n")
+        for (var i = 0; i < lines.length; i++) {
+          var eq = lines[i].indexOf("=")
+          if (eq > 0) parsed[lines[i].slice(0, eq).trim()] = lines[i].slice(eq + 1).trim()
+        }
+        root.values = parsed
+      }
+    }
+  }
+
+  Process { id: writeProc }
+  Process { id: actionProc }
 
   IpcHandler {
     target: "hriddho.cupertino"
 
     function refresh(): void {
       root.broadcast("refresh")
+    }
+
+    // So the panel can be opened from a keybinding or the terminal, not only
+    // by clicking the bar icon.
+    function settings(): void {
+      root.loadSettings()
+      root.settingsOpen = !root.settingsOpen
     }
   }
 
@@ -131,7 +188,14 @@ BarWidget {
     slotSize: Style.bar.statusSlot
     fontSize: Style.font.caption
     tooltipText: root.tooltip
-    onPressed: root.fix()
+    onPressed: {
+      if (root.state === "healthy" || root.state === "checking") {
+        root.settingsOpen = !root.settingsOpen
+        if (root.settingsOpen) root.loadSettings()
+      } else {
+        root.fix()
+      }
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -211,6 +275,189 @@ BarWidget {
       Behavior on width { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
       Behavior on height { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
       Behavior on opacity { NumberAnimation { duration: 90 } }
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Settings.
+  //
+  // Every colour, size and font here comes from the shell's Style and Color
+  // tokens, which are generated from the active Omarchy theme. Nothing is
+  // hardcoded, so the panel restyles itself when the theme changes and follows
+  // the user's font size without being told.
+  //
+  // Controls write through cupertino-set, the same command the terminal uses,
+  // so the panel and the file can never disagree.
+  PopupCard {
+    id: settings
+    anchorItem: root
+    owner: root
+    bar: root.bar
+    open: root.settingsOpen
+    contentWidth: settings.fittedContentWidth(Style.space(330))
+    contentHeight: settings.fittedContentHeight(column.implicitHeight)
+    onOpenChanged: if (!open) root.settingsOpen = false
+
+    Column {
+      id: column
+      anchors.fill: parent
+      spacing: Style.space(6)
+
+      Text {
+        text: "Cupertino"
+        color: Color.foreground
+        font.family: Style.font.family
+        font.pixelSize: Style.font.subtitle
+        font.bold: true
+      }
+
+      PanelSectionHeader { text: "Title bar" }
+
+      CupertinoSlider {
+        label: "Button size"; settingKey: "button_size"
+        from: 8; to: 20; fallback: 12
+      }
+      CupertinoSlider {
+        label: "Bar height"; settingKey: "bar_height"
+        from: 20; to: 44; fallback: 28
+      }
+      CupertinoToggle {
+        label: "Always show glyphs"; settingKey: "icons_always_visible"
+        fallback: true
+      }
+
+      PanelSectionHeader { text: "Window" }
+
+      CupertinoSlider {
+        label: "Corner rounding"; settingKey: "rounding"
+        from: 0; to: 24; fallback: 10
+      }
+      CupertinoSlider {
+        label: "Border width"; settingKey: "border_size"
+        from: 0; to: 8; fallback: 3
+      }
+      CupertinoToggle {
+        label: "Open windows floating"; settingKey: "float_by_default"
+        fallback: true
+      }
+      CupertinoToggle {
+        label: "Drop shadow"; settingKey: "shadow"; fallback: true
+      }
+
+      PanelSectionHeader { text: "Snapping" }
+
+      CupertinoToggle {
+        label: "Drag to edge to snap"; settingKey: "drag_snap"; fallback: true
+      }
+      CupertinoSlider {
+        label: "Edge sensitivity"; settingKey: "snap_edge"
+        from: 4; to: 40; fallback: 10
+      }
+
+      PanelSectionHeader { text: "Other applications" }
+
+      CupertinoToggle {
+        label: "Hide their window buttons"
+        settingKey: "hide_app_window_buttons"
+        fallback: true
+        hint: "Chromium, GNOME apps and Firefox each draw their own close\nbutton. Off hands those buttons back."
+      }
+
+      Item { width: 1; height: Style.space(4) }
+
+      Button {
+        width: parent.width
+        text: "Rebuild title bars"
+        bordered: true
+        onClicked: {
+          actionProc.command = ["omarchy-launch-floating-terminal-with-presentation",
+                                root.helper("rebuild-hyprbars")]
+          actionProc.running = true
+          root.settingsOpen = false
+        }
+      }
+    }
+  }
+
+  // A labelled row with a slider, bound to one settings key.
+  component CupertinoSlider: Item {
+    property string label: ""
+    property string settingKey: ""
+    property real from: 0
+    property real to: 10
+    property real fallback: 0
+    readonly property real current: root.valueOf(settingKey, fallback)
+
+    width: column.width
+    implicitHeight: Math.max(Style.spacing.controlHeight, rowLabel.implicitHeight)
+
+    Text {
+      id: rowLabel
+      anchors.verticalCenter: parent.verticalCenter
+      text: parent.label
+      color: Color.foreground
+      font.family: Style.font.family
+      font.pixelSize: Style.font.body
+    }
+
+    Text {
+      id: rowValue
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      text: Math.round(parent.current)
+      color: Color.accent
+      font.family: Style.font.family
+      font.pixelSize: Style.font.bodySmall
+      width: Style.space(24)
+      horizontalAlignment: Text.AlignRight
+    }
+
+    PanelSlider {
+      anchors.right: rowValue.left
+      anchors.rightMargin: Style.space(8)
+      anchors.verticalCenter: parent.verticalCenter
+      width: Style.space(120)
+      bar: root.bar
+      integer: true
+      minimum: parent.from
+      maximum: parent.to
+      step: 1
+      value: parent.current
+      onMoved: root.put(parent.settingKey, Math.round(value))
+    }
+  }
+
+  // A labelled row with an on/off control, bound to one settings key.
+  component CupertinoToggle: Item {
+    property string label: ""
+    property string settingKey: ""
+    property bool fallback: true
+    property string hint: ""
+    readonly property bool current: root.valueOf(settingKey, fallback) === true
+
+    width: column.width
+    implicitHeight: Math.max(Style.spacing.controlHeight, toggleLabel.implicitHeight)
+
+    Text {
+      id: toggleLabel
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      width: parent.width - Style.space(60)
+      text: parent.label
+      elide: Text.ElideRight
+      color: Color.foreground
+      font.family: Style.font.family
+      font.pixelSize: Style.font.body
+    }
+
+    Button {
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      text: parent.current ? "On" : "Off"
+      active: parent.current
+      bordered: true
+      tooltipText: parent.hint
+      onClicked: root.put(parent.settingKey, parent.current ? "false" : "true")
     }
   }
 }

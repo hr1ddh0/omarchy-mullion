@@ -52,10 +52,33 @@ def shell_tool(name):
             return candidate
     return name
 
+def settings(path=None):
+    """Read ~/.config/omarchy/cupertino.conf. Missing keys use the defaults."""
+    values = {"drag_snap": True, "snap_edge": 10, "snap_corner": 140}
+    path = path or os.path.expanduser("~/.config/omarchy/cupertino.conf")
+    try:
+        for line in open(path):
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, raw = (part.strip() for part in line.split("=", 1))
+            if raw in ("true", "false"):
+                values[key] = raw == "true"
+            else:
+                try:
+                    values[key] = int(raw)
+                except ValueError:
+                    values[key] = raw
+    except OSError:
+        pass
+    return values
+
+
+SETTINGS = settings()
 # How close to an edge counts as "on" it, and how far along an edge still
 # counts as its corner.
-EDGE = 10
-CORNER_SPAN = 140
+EDGE = int(SETTINGS.get("snap_edge", 10))
+CORNER_SPAN = int(SETTINGS.get("snap_corner", 140))
 # Ignore a drag that never really moved, so a plain SUPER+click near an edge
 # does not rearrange anything.
 MIN_TRAVEL = 24
@@ -249,6 +272,8 @@ def watch():
 
 
 def start():
+    if not SETTINGS.get("drag_snap", True):
+        return
     pos = cursor_pos()
     log("drag start at %s" % (pos,), reset=True)
     if not pos:
@@ -268,6 +293,8 @@ def start():
 
 
 def end():
+    if not SETTINGS.get("drag_snap", True):
+        return
     try:
         with open(STATE) as handle:
             began = json.load(handle)

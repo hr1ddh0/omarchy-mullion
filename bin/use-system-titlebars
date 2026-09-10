@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
-"""Stop Chromium-family browsers drawing their own window buttons.
+"""Stop applications drawing their own window buttons.
 
-With title bars from this plugin, a browser that also draws its own frame gives
-you two sets of window controls -- ours on the title bar, and its close button
-at the right of the tab strip. Chromium calls the setting "Use system title bar
-and borders"; turned on, it drops its buttons and uses the title bar instead.
+With title bars from this plugin, an app that also draws its own frame gives
+you two sets of window controls -- ours on the title bar, and its own close
+button somewhere in its header. This turns the app-drawn ones off:
+
+  * Chromium, Chrome, Brave, Edge, Vivaldi -- "Use system title bar and
+    borders", which drops the close button at the right of the tab strip.
+  * GTK / GNOME apps (Files, Text Editor, and anything with a header bar) --
+    the shared button-layout that puts a close button in every header bar.
+  * Firefox -- the same idea, its own title bar drawing.
 
 Chromium rewrites its Preferences file on exit, so this refuses to touch a
 profile whose browser is running rather than having the change silently undone.
 
-    use-system-titlebars          # apply
-    use-system-titlebars --check  # report only
+    use-system-titlebars           # hide app-drawn window buttons
+    use-system-titlebars --revert  # hand them back
+    use-system-titlebars --check   # report only, change nothing
+
+With no flag it follows hide_app_window_buttons in
+~/.config/omarchy/cupertino.conf, so the settings panel can drive it either way
+by writing that key and re-running this.
 """
 import json
 import os
@@ -50,7 +60,7 @@ def profiles(config_dir):
     return found
 
 
-def apply(path, check):
+def apply(path, check, hide):
     try:
         with open(path) as handle:
             prefs = json.load(handle)
@@ -58,24 +68,157 @@ def apply(path, check):
         print("    could not read %s (%s)" % (path, exc))
         return False
 
+    # custom_chrome_frame is the browser drawing its own frame, so hiding its
+    # buttons means turning it off.
+    wanted = not hide
     current = prefs.get("browser", {}).get("custom_chrome_frame")
-    if current is False:
-        print("    already using the system title bar")
+    if current == wanted:
+        print("    already %s" % ("using the system title bar" if hide
+                                  else "drawing its own buttons"))
         return False
     if check:
-        print("    would turn off its own window frame")
+        print("    would turn its own window frame %s" % ("off" if hide else "on"))
         return True
 
     shutil.copy2(path, path + ".bak")
-    prefs.setdefault("browser", {})["custom_chrome_frame"] = False
+    prefs.setdefault("browser", {})["custom_chrome_frame"] = wanted
     with open(path, "w") as handle:
         json.dump(prefs, handle, separators=(",", ":"))
     print("    done (previous file kept as Preferences.bak)")
     return True
 
 
+# Nothing on the left, nothing on the right: header bars keep their app content
+# but lose minimise/maximise/close, which the title bar now provides.
+GTK_LAYOUT = ":"
+# What GNOME ships, restored when the user asks for the buttons back.
+GTK_DEFAULT_LAYOUT = "appmenu:close"
+
+
+def gtk_buttons(check, hide):
+    """Drop the close button from GTK/GNOME header bars, or restore it."""
+    print("  GTK / GNOME header bars")
+    changed = False
+
+    schema = "org.gnome.desktop.wm.preferences"
+    try:
+        current = subprocess.run(["gsettings", "get", schema, "button-layout"],
+                                 capture_output=True, text=True, timeout=5)
+        value = current.stdout.strip().strip("'\"")
+        target = GTK_LAYOUT if hide else GTK_DEFAULT_LAYOUT
+        if current.returncode != 0:
+            print("    gsettings schema unavailable; skipping")
+        elif value == target:
+            print("    already has no header-bar buttons")
+        elif check:
+            print("    would change button-layout from %r to %r" % (value, target))
+            changed = True
+        else:
+            subprocess.run(["gsettings", "set", schema, "button-layout", target],
+                           capture_output=True, text=True, timeout=5)
+            print("    button-layout %r -> %r" % (value, target))
+            print("    (restore with: gsettings reset %s button-layout)" % schema)
+            changed = True
+    except Exception as exc:
+        print("    could not read gsettings (%s)" % exc)
+
+    # Some toolkits read the ini rather than gsettings, so set both.
+    config = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    for version in ("gtk-3.0", "gtk-4.0"):
+        path = os.path.join(config, version, "settings.ini")
+        changed |= write_ini_setting(path, "gtk-decoration-layout",
+                                     GTK_LAYOUT if hide else GTK_DEFAULT_LAYOUT, check)
+    return changed
+
+
+def write_ini_setting(path, key, value, check):
+    """Set one key under [Settings], leaving everything else intact."""
+    line = "%s=%s" % (key, value)
+    try:
+        existing = open(path).read() if os.path.exists(path) else ""
+    except OSError:
+        return False
+
+    if line in existing:
+        return False
+    if check:
+        print("    would set %s in %s" % (line, path))
+        return True
+
+    if existing:
+        shutil.copy2(path, path + ".bak")
+    lines = [l for l in existing.splitlines() if not l.strip().startswith(key)]
+    if "[Settings]" not in existing:
+        lines = ["[Settings]"] + lines
+    out = []
+    for entry in lines:
+        out.append(entry)
+        if entry.strip() == "[Settings]":
+            out.append(line)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    open(path, "w").write("\n".join(out) + "\n")
+    print("    set %s in %s" % (line, path))
+    return True
+
+
+def firefox(check, hide):
+    """Stop Firefox drawing its own title bar."""
+    home = os.path.expanduser("~")
+    roots = [os.path.join(home, ".mozilla", "firefox"),
+             os.path.join(home, ".librewolf")]
+    pref = 'user_pref("browser.tabs.inTitlebar", %d);' % (0 if hide else 1)
+    found = False
+    changed = False
+
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        for entry in sorted(os.listdir(root)):
+            profile = os.path.join(root, entry)
+            if not os.path.isfile(os.path.join(profile, "prefs.js")):
+                continue
+            found = True
+            if not changed:
+                print("  Firefox")
+            user_js = os.path.join(profile, "user.js")
+            existing = open(user_js).read() if os.path.exists(user_js) else ""
+            if pref in existing:
+                print("    %s already set" % entry)
+                continue
+            existing = "\n".join(l for l in existing.splitlines()
+                                 if "browser.tabs.inTitlebar" not in l)
+            open(user_js, "w").write(existing)
+            if check:
+                print("    would set %s for %s" % (pref, entry))
+                changed = True
+                continue
+            with open(user_js, "a") as handle:
+                handle.write(("\n" if existing and not existing.endswith("\n") else "")
+                             + pref + "\n")
+            print("    set %s for %s" % (pref, entry))
+            changed = True
+    return changed if found else False
+
+
+def wanted_state():
+    """hide_app_window_buttons from the shared settings file."""
+    path = os.path.expanduser("~/.config/omarchy/cupertino.conf")
+    try:
+        for line in open(path):
+            key, _, raw = line.partition("=")
+            if key.strip() == "hide_app_window_buttons":
+                return raw.strip() != "false"
+    except OSError:
+        pass
+    return True
+
+
 def main():
-    check = "--check" in sys.argv[1:]
+    args = sys.argv[1:]
+    check = "--check" in args
+    hide = False if "--revert" in args else wanted_state()
+    print("Target: %s app-drawn window buttons\n"
+          % ("hiding" if hide else "restoring"))
     config = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
     touched = False
     seen = False
@@ -91,12 +234,18 @@ def main():
                   " will rewrite the file on exit")
             continue
         for path in found:
-            touched |= apply(path, check)
+            touched |= apply(path, check, hide)
 
     if not seen:
-        print("  no Chromium-family browser configured; nothing to do")
-    elif touched and not check:
-        print("\nRestart the browser to pick this up.")
+        print("  no Chromium-family browser configured")
+
+    touched |= gtk_buttons(check, hide)
+    touched |= firefox(check, hide)
+
+    if touched and not check:
+        print("\nRestart the apps above to pick this up.")
+    elif not touched:
+        print("\nNothing to change; no app is drawing its own window buttons.")
     return 0
 
 

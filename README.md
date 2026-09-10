@@ -52,12 +52,42 @@ The installer builds the title-bar plugin against your exact Hyprland build,
 installs the minimize widget, patches `~/.config/hypr/hyprland.lua` (keeping a
 timestamped backup), and reloads.
 
+## Settings
+
+Click the Cupertino icon in the bar. Everything is live — a change applies as
+you make it, no restart.
+
+| | |
+| --- | --- |
+| **Title bar** | button size, bar height, glyphs always visible or on hover |
+| **Window** | corner rounding, border width, open floating, drop shadow |
+| **Snapping** | drag-to-edge on/off, edge sensitivity |
+| **Other applications** | hide the window buttons they draw themselves |
+
+The panel is built entirely from the shell's theme tokens, so it restyles
+itself when you change Omarchy themes and follows your font size without being
+configured.
+
+It is a plain file underneath, so the terminal works too:
+
+```bash
+cupertino-set rounding=14 shadow=false
+cupertino-set --list
+```
+
+Both write `~/.config/omarchy/cupertino.conf`, which the Hyprland config and
+the snap helper read directly — the panel and the file cannot drift apart.
+
 ## Browsers that draw their own buttons
 
-Chromium-family browsers draw their own window frame by default, so alongside
-this plugin's traffic lights you get a second, redundant close button at the
-right of the tab strip. `use-system-titlebars` turns that off (Chromium calls
-it "Use system title bar and borders"); the installer runs it for you.
+Chromium-family browsers, GTK/GNOME apps and Firefox all draw their own window
+frame by default, so alongside this plugin's traffic lights you get a second,
+redundant close button. `use-system-titlebars` turns that off across all three
+families; the installer runs it for you, and the **Other applications** toggle
+in the settings panel drives it either way.
+
+The GTK setting is a shared one, so it covers every header-bar app at once —
+including ones neither of us thought to name.
 
 It refuses to touch a profile whose browser is running, because Chromium
 rewrites its preferences on exit and would silently undo the change. Close the

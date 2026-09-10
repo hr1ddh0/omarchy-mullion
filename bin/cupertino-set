@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Change Cupertino settings and apply them.
+
+    cupertino-set rounding=14 shadow=false
+    cupertino-set --get rounding
+    cupertino-set --list
+
+Writes ~/.config/omarchy/cupertino.conf, preserving its comments and ordering,
+then applies whatever the changed keys affect: a Hyprland reload for anything
+the window config reads, and the window-button sweep when that setting moves.
+The settings panel drives this, so the panel and the command line cannot drift.
+"""
+import os
+import subprocess
+import sys
+
+CONF = os.path.expanduser("~/.config/omarchy/cupertino.conf")
+DEFAULTS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "..", "config", "cupertino.conf")
+
+# Keys whose change needs the app window-button sweep re-run.
+APP_BUTTON_KEYS = {"hide_app_window_buttons"}
+
+
+def read(path=CONF):
+    values = {}
+    try:
+        for line in open(path):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, _, raw = stripped.partition("=")
+            values[key.strip()] = raw.strip()
+    except OSError:
+        pass
+    return values
+
+
+def ensure_conf():
+    """Create the file from the shipped defaults the first time."""
+    if os.path.exists(CONF):
+        return
+    os.makedirs(os.path.dirname(CONF), exist_ok=True)
+    try:
+        with open(os.path.normpath(DEFAULTS)) as src, open(CONF, "w") as dst:
+            dst.write(src.read())
+    except OSError:
+        open(CONF, "w").close()
+
+
+def write(updates):
+    """Rewrite the file in place, keeping comments and key order intact."""
+    ensure_conf()
+    try:
+        lines = open(CONF).read().splitlines()
+    except OSError:
+        lines = []
+
+    remaining = dict(updates)
+    out = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in remaining:
+                out.append("%s = %s" % (key, remaining.pop(key)))
+                continue
+        out.append(line)
+
+    # Anything not already present is appended rather than silently dropped.
+    for key, value in remaining.items():
+        out.append("%s = %s" % (key, value))
+
+    with open(CONF, "w") as handle:
+        handle.write("\n".join(out) + "\n")
+
+
+def apply(changed):
+    # Hyprland re-reads the file on reload, and the plugin's Lua config reads
+    # every window/title-bar value straight out of it.
+    subprocess.run(["hyprctl", "reload"], capture_output=True, text=True)
+
+    if changed & APP_BUTTON_KEYS:
+        helper = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "use-system-titlebars")
+        if not os.path.exists(helper):
+            helper = os.path.expanduser("~/.local/bin/use-system-titlebars")
+        if os.path.exists(helper):
+            subprocess.run([helper], capture_output=True, text=True)
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        sys.exit(__doc__.strip())
+
+    if args[0] == "--list":
+        ensure_conf()
+        for key, value in read().items():
+            print("%s=%s" % (key, value))
+        return 0
+
+    if args[0] == "--get":
+        ensure_conf()
+        print(read().get(args[1], "") if len(args) > 1 else "")
+        return 0
+
+    updates = {}
+    for arg in args:
+        if "=" not in arg:
+            sys.exit("expected key=value, got %r" % arg)
+        key, _, value = arg.partition("=")
+        updates[key.strip()] = value.strip()
+
+    write(updates)
+    apply(set(updates))
+    for key, value in updates.items():
+        print("%s = %s" % (key, value))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

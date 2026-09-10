@@ -28,11 +28,16 @@ rm -f "$HOME/.local/share/hyprland/plugins/hyprbars.so" \
       "$HOME/.local/bin/rebuild-hyprbars" \
       "$HOME/.local/bin/macos-snap" \
       "$HOME/.local/bin/macos-drag-snap" \
-      "$HOME/.local/bin/use-system-titlebars"
+      "$HOME/.local/bin/use-system-titlebars" \
+      "$HOME/.local/bin/cupertino-set"
 rm -rf "$HOME/.local/share/cupertino"
 
 echo
+echo "Restoring window buttons to other applications"
+"$HOME/.local/bin/use-system-titlebars" --revert 2>/dev/null || true
+
 echo "Left in place (remove by hand if you want them gone):"
+echo "  - your settings:            ~/.config/omarchy/cupertino.conf"
 echo "  - the window-shelf widget:  omarchy plugin remove io.github.gardnmi.window-shelf"
 echo "  - the hyprbars block appended to ~/.config/omarchy/themed/hyprland.lua.tpl"
 hyprctl reload >/dev/null 2>&1 || true

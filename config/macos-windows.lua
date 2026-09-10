@@ -17,6 +17,54 @@
 -- The old form fails silently -- the button would look fine and do nothing.
 
 -- ---------------------------------------------------------------------------
+-- Settings.
+--
+-- Everything tweakable lives in ~/.config/omarchy/cupertino.conf, written by
+-- the settings panel in the bar and equally editable by hand. Plain key=value
+-- so the Hyprland config, the drag-snap helper and the panel can all read the
+-- same file. Missing keys fall back to the defaults below, so a partial or
+-- absent file is always safe.
+local defaults = {
+  button_size = 12,
+  bar_height = 28,
+  icons_always_visible = true,
+  rounding = 10,
+  border_size = 3,
+  gaps_in = 6,
+  gaps_out = 12,
+  float_by_default = true,
+  shadow = true,
+  drag_snap = true,
+}
+
+local settings = {}
+for key, value in pairs(defaults) do
+  settings[key] = value
+end
+
+do
+  local path = os.getenv("HOME") .. "/.config/omarchy/cupertino.conf"
+  local file = io.open(path, "r")
+  if file then
+    for line in file:lines() do
+      local key, raw = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
+      if key and not line:match("^%s*#") then
+        if raw == "true" then
+          settings[key] = true
+        elseif raw == "false" then
+          settings[key] = false
+        elseif tonumber(raw) then
+          settings[key] = tonumber(raw)
+        else
+          settings[key] = raw
+        end
+      end
+    end
+    file:close()
+  end
+end
+
+-- ---------------------------------------------------------------------------
 -- Window shape.
 --
 -- Rounded corners, and a border wide enough that the theme's accent gradient
@@ -29,13 +77,13 @@
 -- looknfeel.lua says.
 hl.config({
   general = {
-    border_size = 3,
-    gaps_in = 6,
-    gaps_out = 12,
+    border_size = settings.border_size,
+    gaps_in = settings.gaps_in,
+    gaps_out = settings.gaps_out,
   },
 
   decoration = {
-    rounding = 10,
+    rounding = settings.rounding,
   },
 })
 
@@ -65,7 +113,9 @@ hl.config({
 -- of being auto-arranged into a tiling grid. New windows are centered.
 --
 -- SUPER + T tiles the focused window if you want tiling back for one window.
-o.window(".*", { float = true })
+if settings.float_by_default then
+  o.window(".*", { float = true })
+end
 
 -- Remember each window's size between launches rather than resetting it.
 o.window(".*", { persistent_size = true })
@@ -80,7 +130,7 @@ if hl.plugin.hyprbars then
   hl.config({
     plugin = {
       hyprbars = {
-        bar_height = 28,
+        bar_height = settings.bar_height,
         bar_padding = 12,
         bar_button_padding = 8,
         bar_text_size = 11,
@@ -91,7 +141,7 @@ if hl.plugin.hyprbars then
         -- Keep the glyphs visible rather than hover-only: at this size they
         -- read as crisp marks, and always-on is easier to hit accurately.
         -- Set this back to true for strict macOS hover behavior.
-        icon_on_hover = false,
+        icon_on_hover = not settings.icons_always_visible,
         -- The bar reserves its own space rather than covering the window.
         bar_part_of_window = true,
         bar_precedence_over_border = true,
@@ -114,7 +164,7 @@ if hl.plugin.hyprbars then
   hl.plugin.hyprbars.add_button({
     bg_color = "rgb(ff5f57)",
     fg_color = "rgb(000000)",
-    size = 12,
+    size = settings.button_size,
     icon = "",
     action = [[hyprctl dispatch 'hl.dsp.window.close()']],
   })
@@ -125,7 +175,7 @@ if hl.plugin.hyprbars then
   hl.plugin.hyprbars.add_button({
     bg_color = "rgb(febc2e)",
     fg_color = "rgb(000000)",
-    size = 12,
+    size = settings.button_size,
     icon = "",
     action = [[hyprctl dispatch 'hl.dsp.window.move({ workspace = "special:omarchy-minimized", follow = false })']],
   })
@@ -142,7 +192,7 @@ if hl.plugin.hyprbars then
   hl.plugin.hyprbars.add_button({
     bg_color = "rgb(28c840)",
     fg_color = "rgb(000000)",
-    size = 12,
+    size = settings.button_size,
     icon = "󰘖",
     -- The font's arrows run NE-SW; macOS runs them NW-SE and no installed
     -- font carries the mirrored twin, so the build patch flips the glyph.
