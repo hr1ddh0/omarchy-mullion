@@ -20,6 +20,12 @@ install -m755 "$HERE/bin/rebuild-hyprbars" "$HOME/.local/bin/rebuild-hyprbars"
 install -m755 "$HERE/bin/macos-snap" "$HOME/.local/bin/macos-snap"
 install -m755 "$HERE/bin/macos-drag-snap" "$HOME/.local/bin/macos-drag-snap"
 
+# Patches applied to hyprbars at build time, kept where rebuild-hyprbars looks.
+mkdir -p "$HOME/.local/share/cupertino/patches"
+if compgen -G "$HERE/patches/*.py" >/dev/null; then
+  install -m755 "$HERE"/patches/*.py "$HOME/.local/share/cupertino/patches/"
+fi
+
 case ":$PATH:" in
   *":$HOME/.local/bin:"*) ;;
   *) echo "Note: ~/.local/bin is not on your PATH; the snap keybindings need it." ;;

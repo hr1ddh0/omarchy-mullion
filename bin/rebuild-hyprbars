@@ -26,6 +26,23 @@ else
   git -C "$WORK/hlp" checkout --quiet FETCH_HEAD
 fi
 
+# Local patches. Each is optional: a patch that no longer applies is skipped
+# with a note rather than failing the build.
+# Look beside the script first (running from a checkout), then where the
+# installer puts them.
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for candidate in "$SELF_DIR/../patches" "$HOME/.local/share/cupertino/patches"; do
+  if [[ -d $candidate ]]; then PATCHES="$candidate"; break; fi
+done
+
+if [[ -n ${PATCHES:-} && -d $PATCHES ]]; then
+  echo "Applying local patches:"
+  for patch in "$PATCHES"/*.py; do
+    [[ -e $patch ]] || continue
+    python3 "$patch" "$WORK/hlp/hyprbars/barDeco.cpp" || true
+  done
+fi
+
 make -C "$WORK/hlp/hyprbars" all >/dev/null
 mkdir -p "$(dirname "$DEST")"
 install -m755 "$WORK/hlp/hyprbars/hyprbars.so" "$DEST"

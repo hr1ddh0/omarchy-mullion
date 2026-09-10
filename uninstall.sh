@@ -28,6 +28,7 @@ rm -f "$HOME/.local/share/hyprland/plugins/hyprbars.so" \
       "$HOME/.local/bin/rebuild-hyprbars" \
       "$HOME/.local/bin/macos-snap" \
       "$HOME/.local/bin/macos-drag-snap"
+rm -rf "$HOME/.local/share/cupertino"
 
 echo
 echo "Left in place (remove by hand if you want them gone):"
