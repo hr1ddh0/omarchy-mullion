@@ -38,6 +38,7 @@ echo "Restoring window buttons to other applications"
 
 echo "Left in place (remove by hand if you want them gone):"
 echo "  - your settings:            ~/.config/omarchy/mullion.conf"
+echo "  - the bar widget:           omarchy plugin remove hriddho.mullion"
 echo "  - the window-shelf widget:  omarchy plugin remove io.github.gardnmi.window-shelf"
 echo "  - the hyprbars block appended to ~/.config/omarchy/themed/hyprland.lua.tpl"
 hyprctl reload >/dev/null 2>&1 || true

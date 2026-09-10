@@ -24,26 +24,28 @@
 -- so the Hyprland config, the drag-snap helper and the panel can all read the
 -- same file. Missing keys fall back to the defaults below, so a partial or
 -- absent file is always safe.
-local defaults = {
-  -- "macos"   traffic lights on the left, title centred
-  -- "windows" caption buttons on the right, title left, no coloured plates
-  -- "none"    title bar with no buttons at all
-  window_style = "macos",
-  button_size = 12,
-  bar_height = 28,
-  icons_always_visible = true,
-  rounding = 10,
-  border_size = 3,
-  gaps_in = 6,
-  gaps_out = 12,
-  float_by_default = true,
-  shadow = true,
-  drag_snap = true,
+-- Each tunable declares its type and, for numbers, the range it is allowed to
+-- take. A value that is missing, misspelled, the wrong type or out of range
+-- falls back to the default rather than reaching Hyprland: a typo in this file
+-- should never be able to produce a desktop with no borders, a negative title
+-- bar, or square corners you did not ask for.
+local schema = {
+  window_style = { default = "macos", choices = { macos = true, windows = true, none = true } },
+  button_size = { default = 12, min = 6, max = 28 },
+  bar_height = { default = 28, min = 16, max = 64 },
+  icons_always_visible = { default = true },
+  rounding = { default = 10, min = 0, max = 32 },
+  border_size = { default = 3, min = 0, max = 12 },
+  gaps_in = { default = 6, min = 0, max = 40 },
+  gaps_out = { default = 12, min = 0, max = 80 },
+  float_by_default = { default = true },
+  shadow = { default = true },
+  drag_snap = { default = true },
 }
 
 local settings = {}
-for key, value in pairs(defaults) do
-  settings[key] = value
+for key, rule in pairs(schema) do
+  settings[key] = rule.default
 end
 
 do
@@ -51,23 +53,33 @@ do
   local file = io.open(path, "r")
   if file then
     for line in file:lines() do
-      local key, raw = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
-      if key and not line:match("^%s*#") then
-        if raw == "true" then
-          settings[key] = true
-        elseif raw == "false" then
-          settings[key] = false
-        elseif tonumber(raw) then
-          settings[key] = tonumber(raw)
-        else
-          settings[key] = raw
+      if not line:match("^%s*#") then
+        local key, raw = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
+        local rule = key and schema[key]
+        if rule then
+          if type(rule.default) == "boolean" then
+            -- Only the two literals count; anything else keeps the default.
+            if raw == "true" or raw == "false" then
+              settings[key] = raw == "true"
+            end
+          elseif type(rule.default) == "number" then
+            local value = tonumber(raw)
+            if value then
+              -- Clamp rather than reject, so a value that is merely too large
+              -- still does something sensible.
+              if rule.min and value < rule.min then value = rule.min end
+              if rule.max and value > rule.max then value = rule.max end
+              settings[key] = math.floor(value)
+            end
+          elseif rule.choices then
+            if rule.choices[raw] then settings[key] = raw end
+          end
         end
       end
     end
     file:close()
   end
 end
-
 
 -- ---------------------------------------------------------------------------
 -- Window style.
@@ -76,9 +88,6 @@ end
 -- the title is aligned and how the window is lifted off the desktop. Snapping
 -- and edge-resize are identical in both, so they live outside this.
 local style = settings.window_style
-if style ~= "windows" and style ~= "none" then
-  style = "macos"
-end
 
 -- Colours from the active theme, handed over by
 -- ~/.config/omarchy/themed/hyprland.lua.tpl earlier in this same parse.

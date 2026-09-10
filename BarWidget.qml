@@ -479,7 +479,12 @@ BarWidget {
     property real from: 0
     property real to: 10
     property real fallback: 0
-    readonly property real current: root.valueOf(settingKey, fallback)
+    // While dragging, show the live position but do not write: each write runs
+    // mullion-set, which reloads Hyprland, and onMoved fires continuously. A
+    // single drag would otherwise fire dozens of reloads.
+    property real pending: NaN
+    readonly property real stored: root.valueOf(settingKey, fallback)
+    readonly property real current: isNaN(pending) ? stored : pending
 
     width: column.width
     implicitHeight: Math.max(Style.spacing.controlHeight, rowLabel.implicitHeight)
@@ -516,7 +521,14 @@ BarWidget {
       maximum: parent.to
       step: 1
       value: parent.current
-      onMoved: root.put(parent.settingKey, Math.round(value))
+      // Live feedback only.
+      onMoved: parent.pending = Math.round(value)
+      // One write, when the knob is let go.
+      onReleased: {
+        var settled = Math.round(value)
+        parent.pending = NaN
+        if (settled !== Math.round(parent.stored)) root.put(parent.settingKey, settled)
+      }
     }
   }
 

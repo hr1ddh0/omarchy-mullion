@@ -23,6 +23,11 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNTIME = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
 STATE = os.path.join(RUNTIME, "mullion-drag.json")
+# Holds the running watcher's pid. SUPER+dragging a title bar fires both the
+# Hyprland binding and hyprbars' own hook, so "start" can arrive twice for one
+# drag; without this each would get its own watcher, doubling the IPC and
+# letting the two fight over the preview.
+LOCK = os.path.join(RUNTIME, "mullion-drag.pid")
 # Overwritten at the start of each drag, so it never grows. Read it with
 # `cat $XDG_RUNTIME_DIR/mullion-drag.log` if snapping ever misbehaves.
 LOG = os.path.join(RUNTIME, "mullion-drag.log")
@@ -226,7 +231,11 @@ def watch():
     # Everything the loop needs is computed once here, so following the cursor
     # is arithmetic and a socket read -- no process ever starts per frame.
     snap = snap_module()
-    boxes = {id(mon): snap.region_boxes(mon) for mon in mons}
+    # Keyed by name: object identity happens to work here only because every
+    # lookup returns an element of this same list, which is too subtle to rely
+    # on.
+    boxes = {mon.get("name", str(i)): snap.region_boxes(mon)
+             for i, mon in enumerate(mons)}
 
     shown = None            # region the overlay is currently displaying
     pending = None          # region seen most recently
@@ -246,7 +255,7 @@ def watch():
             # region is always the one drawn.
             if pending != shown and frame - last_sent >= MIN_UPDATE_SECONDS:
                 if pending:
-                    box = boxes[id(mon)].get(pending)
+                    box = boxes.get(mon.get("name", ""), {}).get(pending)
                     if box:
                         overlay("show", {"x": box[0], "y": box[1],
                                          "w": box[2], "h": box[3]})
@@ -262,7 +271,8 @@ def watch():
     # Trailing send: if the drag ended on a region we had rate-limited away,
     # the preview would otherwise be left showing the wrong one.
     if pending != shown and pending:
-        box = boxes[id(monitor_at(mons, *(cursor_pos() or (0, 0))))].get(pending)
+        final_mon = monitor_at(mons, *(cursor_pos() or (0, 0)))
+        box = boxes.get(final_mon.get("name", ""), {}).get(pending)
         if box:
             overlay("show", {"x": box[0], "y": box[1], "w": box[2], "h": box[3]})
         shown = pending
@@ -271,8 +281,24 @@ def watch():
         overlay("hide", wait=True)
 
 
+def watcher_running():
+    """Is a watcher from this drag still alive?"""
+    try:
+        pid = int(open(LOCK).read().strip())
+    except (OSError, ValueError):
+        return False
+    try:
+        os.kill(pid, 0)          # signal 0 only tests for existence
+        return True
+    except OSError:
+        return False
+
+
 def start():
     if not SETTINGS.get("drag_snap", True):
+        return
+    if watcher_running():
+        # The other half of the same drag already started one.
         return
     pos = cursor_pos()
     log("drag start at %s" % (pos,), reset=True)
@@ -287,8 +313,14 @@ def start():
         return
     os.setsid()
     try:
+        with open(LOCK, "w") as handle:
+            handle.write(str(os.getpid()))
         watch()
     finally:
+        try:
+            os.remove(LOCK)
+        except OSError:
+            pass
         os._exit(0)
 
 
@@ -298,7 +330,13 @@ def end():
     try:
         with open(STATE) as handle:
             began = json.load(handle)
-    except (OSError, ValueError):
+        # A drag that never ended (a crash, a missed release) leaves this
+        # behind. Measuring travel from an hour-old position would snap a
+        # window the user only just clicked.
+        if time.time() - float(began.get("t", 0)) > MAX_DRAG_SECONDS:
+            log("ignoring a stale drag record")
+            began = None
+    except (OSError, ValueError, TypeError):
         began = None
     # Removing the state file is what tells the watcher to stop.
     try:
