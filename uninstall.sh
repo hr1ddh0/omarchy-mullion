@@ -26,7 +26,8 @@ PY
 say "Removing the plugin binary"
 rm -f "$HOME/.local/share/hyprland/plugins/hyprbars.so" \
       "$HOME/.local/bin/rebuild-hyprbars" \
-      "$HOME/.local/bin/macos-snap"
+      "$HOME/.local/bin/macos-snap" \
+      "$HOME/.local/bin/macos-drag-snap"
 
 echo
 echo "Left in place (remove by hand if you want them gone):"

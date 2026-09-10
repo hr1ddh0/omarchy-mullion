@@ -18,6 +18,7 @@ say "Building the hyprbars title-bar plugin"
 mkdir -p "$HOME/.local/bin"
 install -m755 "$HERE/bin/rebuild-hyprbars" "$HOME/.local/bin/rebuild-hyprbars"
 install -m755 "$HERE/bin/macos-snap" "$HOME/.local/bin/macos-snap"
+install -m755 "$HERE/bin/macos-drag-snap" "$HOME/.local/bin/macos-drag-snap"
 
 case ":$PATH:" in
   *":$HOME/.local/bin:"*) ;;
@@ -83,6 +84,12 @@ sleep 1
 hyprctl reload >/dev/null 2>&1 || true
 sleep 1
 hyprctl configerrors || true
+
+# The drag preview talks to an IpcHandler inside the bar widget, and those
+# only bind when the shell loads the plugin -- a hot rescan is not enough.
+say "Restarting the shell so the snap preview registers"
+omarchy restart shell >/dev/null 2>&1 || true
+sleep 4
 
 if hyprctl plugin list 2>/dev/null | grep -q hyprbars; then
   say "Done. Traffic lights on every window; minimized windows appear as chips in the bar."

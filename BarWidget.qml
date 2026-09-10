@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 
@@ -131,5 +132,85 @@ BarWidget {
     fontSize: Style.font.caption
     tooltipText: root.tooltip
     onPressed: root.fix()
+  }
+
+  // ---------------------------------------------------------------------
+  // Drag-to-edge snap preview.
+  //
+  // macos-drag-snap follows the cursor while a window is being dragged and
+  // pushes the target rectangle here, so you see where the window will land
+  // before letting go. The rectangle is computed by macos-snap itself, so the
+  // preview can never disagree with the snap that follows.
+  //
+  // The bar builds one widget per monitor but an IPC target routes to a single
+  // handler, so the receiving instance fans the box out to its peers.
+  property var snapBox: null
+
+  function setBox(box) {
+    root.snapBox = (box && box.w > 0 && box.h > 0) ? box : null
+  }
+
+  function fanoutBox(box) {
+    var items = (bar && typeof bar.moduleWidgets === "function")
+      ? bar.moduleWidgets(moduleName) : [root]
+    for (var i = 0; i < items.length; i++) {
+      if (items[i] && typeof items[i].setBox === "function") items[i].setBox(box)
+    }
+  }
+
+  IpcHandler {
+    target: "cupertino-snap"
+
+    function show(payloadJson: string): string {
+      var box = null
+      try { box = JSON.parse(payloadJson) } catch (e) { box = null }
+      root.fanoutBox(box)
+      return "ok"
+    }
+
+    function hide(): string {
+      root.fanoutBox(null)
+      return "ok"
+    }
+
+    function ping(): string { return "ok" }
+  }
+
+  PanelWindow {
+    id: snapPreview
+    visible: root.snapBox !== null
+
+    anchors { top: true; bottom: true; left: true; right: true }
+    color: "transparent"
+    WlrLayershell.namespace: "cupertino-snap"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+    exclusionMode: ExclusionMode.Ignore
+    // Purely visual: an empty input region means this can never swallow the
+    // drag that is currently in progress.
+    mask: Region {}
+
+    Rectangle {
+      // Box coordinates are global, so shift them into this screen's space.
+      readonly property int originX: snapPreview.screen ? snapPreview.screen.x : 0
+      readonly property int originY: snapPreview.screen ? snapPreview.screen.y : 0
+
+      x: root.snapBox ? root.snapBox.x - originX : 0
+      y: root.snapBox ? root.snapBox.y - originY : 0
+      width: root.snapBox ? root.snapBox.w : 0
+      height: root.snapBox ? root.snapBox.h : 0
+
+      radius: Style.cornerRadius
+      color: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.20)
+      border.color: Color.accent
+      border.width: 2
+      opacity: root.snapBox ? 1 : 0
+
+      Behavior on x { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
+      Behavior on y { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
+      Behavior on width { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
+      Behavior on height { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
+      Behavior on opacity { NumberAnimation { duration: 90 } }
+    }
   }
 }

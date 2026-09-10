@@ -19,8 +19,13 @@ actually find again.
   top-left quarter, so four apps tile one workspace with two presses each.
   Geometry comes from the real monitor and the bar's reserved area, so halves
   meet with no gap at any resolution, scale, or bar position.
-- **Magnetic dragging** — a dragged window sticks to screen edges and to other
-  windows as it gets close, so things line up without pixel-hunting.
+- **Drag to an edge to snap it**, with a live translucent preview of where the
+  window will land — what Windows calls Aero Snap. Edges give halves, the top
+  edge fills the screen, and corners give quarters, so four windows tile a
+  workspace by dragging alone. The preview rectangle is computed by the same
+  code that performs the snap, so it can never show you the wrong target.
+- **Magnetic dragging** — a dragged window also sticks to screen edges and to
+  other windows as it gets close, so things line up without pixel-hunting.
 - **Floating windows** by default, centered on open, remembering their size.
 - **Follows your theme** — the title bar and the focused-window glow are tinted
   from the active Omarchy theme's colors, and retrack when you switch themes.
@@ -92,6 +97,19 @@ hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })'   # works
 ```
 
 Minimized windows are restored to your current workspace first.
+
+## How drag-snapping works
+
+Hyprland exposes no drag events, so the press and release of the very same
+`SUPER` + left-drag that already moves a window mark the start and end of one.
+Both bindings are **non-consuming**, so Omarchy's own move binding still runs
+and dragging behaves exactly as it did before.
+
+While the button is held, a watcher follows the cursor over Hyprland's command
+socket — about 0.03 ms per read, so 60 Hz costs nothing, and only for as long
+as you are actually dragging. It asks the bar widget to draw the preview, and
+on release the window is snapped. A drag shorter than 24 px is ignored, so a
+plain `SUPER`+click near an edge never rearranges anything.
 
 ## What the bar widget does
 

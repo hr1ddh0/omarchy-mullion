@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""Drag a window to a screen edge to snap it there, with a live preview.
+
+    macos-drag-snap start   # bound to SUPER + left-mouse press
+    macos-drag-snap end     # bound to the matching release
+
+While the mouse button is held, a watcher follows the cursor and asks the
+Cupertino bar widget to draw a translucent highlight over the region the window
+would land in. On release, the window is snapped to that region.
+
+Hyprland has no drag events, so the button bindings mark the drag and the
+cursor is polled over Hyprland's command socket -- about 0.03 ms per read, so
+following it at 60 Hz costs nothing, and only for as long as the button is down.
+"""
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+STATE = os.path.join(
+    os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "cupertino-drag.json"
+)
+
+# How close to an edge counts as "on" it, and how far along an edge still
+# counts as its corner.
+EDGE = 10
+CORNER_SPAN = 140
+# Ignore a drag that never really moved, so a plain SUPER+click near an edge
+# does not rearrange anything.
+MIN_TRAVEL = 24
+POLL_SECONDS = 1 / 60
+# Safety net: never let a watcher outlive its drag if a release is missed.
+MAX_DRAG_SECONDS = 120
+
+
+def hypr(request):
+    """Talk to Hyprland's command socket directly; far cheaper than hyprctl."""
+    sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+    path = f"{runtime}/hypr/{sig}/.socket.sock"
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.connect(path)
+        sock.sendall(request.encode())
+        chunks = []
+        while True:
+            chunk = sock.recv(8192)
+            if not chunk:
+                break
+            chunks.append(chunk)
+    return b"".join(chunks).decode()
+
+
+def cursor_pos():
+    try:
+        data = json.loads(hypr("j/cursorpos"))
+        return data["x"], data["y"]
+    except Exception:
+        return None
+
+
+def monitors():
+    return json.loads(hypr("j/monitors"))
+
+
+def focused_monitor(mons):
+    return next((m for m in mons if m.get("focused")), None) or mons[0]
+
+
+def monitor_at(mons, x, y):
+    for mon in mons:
+        scale = mon.get("scale") or 1
+        mw, mh = int(mon["width"] / scale), int(mon["height"] / scale)
+        if mon["x"] <= x < mon["x"] + mw and mon["y"] <= y < mon["y"] + mh:
+            return mon
+    return focused_monitor(mons)
+
+
+def region_at(mons, x, y):
+    """Which snap region the cursor is currently pointing at, or None.
+
+    Uses full monitor bounds rather than the usable area, so dragging into the
+    strip behind the bar still registers as the top edge.
+    """
+    mon = monitor_at(mons, x, y)
+    scale = mon.get("scale") or 1
+    mx, my = mon["x"], mon["y"]
+    mw, mh = int(mon["width"] / scale), int(mon["height"] / scale)
+
+    left = x <= mx + EDGE
+    right = x >= mx + mw - 1 - EDGE
+    top = y <= my + EDGE
+    bottom = y >= my + mh - 1 - EDGE
+    upper = y <= my + CORNER_SPAN
+    lower = y >= my + mh - CORNER_SPAN
+
+    if left and upper:
+        return "topleft"
+    if left and lower:
+        return "bottomleft"
+    if right and upper:
+        return "topright"
+    if right and lower:
+        return "bottomright"
+    if left:
+        return "left"
+    if right:
+        return "right"
+    if top:
+        return "full"
+    if bottom:
+        return "bottom"
+    return None
+
+
+def box_for(region):
+    """The exact rectangle macos-snap would use, so the preview cannot lie."""
+    out = subprocess.run(
+        [os.path.join(HERE, "macos-snap"), "--box", region],
+        capture_output=True, text=True,
+    )
+    if out.returncode != 0:
+        return None
+    try:
+        x, y, w, h = (int(v) for v in out.stdout.split())
+        return {"x": x, "y": y, "w": w, "h": h}
+    except ValueError:
+        return None
+
+
+def overlay(method, payload=None):
+    args = ["omarchy-shell", "cupertino-snap", method]
+    if payload is not None:
+        args.append(json.dumps(payload))
+    subprocess.run(args, capture_output=True, text=True)
+
+
+def watch():
+    """Follow the cursor until the drag ends, previewing the target region."""
+    shown = None
+    deadline = time.time() + MAX_DRAG_SECONDS
+    mons = monitors()
+
+    while os.path.exists(STATE) and time.time() < deadline:
+        pos = cursor_pos()
+        if pos:
+            region = region_at(mons, *pos)
+            if region != shown:
+                if region:
+                    box = box_for(region)
+                    if box:
+                        overlay("show", box)
+                else:
+                    overlay("hide")
+                shown = region
+        time.sleep(POLL_SECONDS)
+
+    if shown:
+        overlay("hide")
+
+
+def start():
+    pos = cursor_pos()
+    if not pos:
+        return
+    with open(STATE, "w") as handle:
+        json.dump({"x": pos[0], "y": pos[1], "t": time.time()}, handle)
+
+    # Detach so the key binding returns immediately and the native window drag
+    # is not held up behind us.
+    if os.fork() != 0:
+        return
+    os.setsid()
+    try:
+        watch()
+    finally:
+        os._exit(0)
+
+
+def end():
+    try:
+        with open(STATE) as handle:
+            began = json.load(handle)
+    except (OSError, ValueError):
+        began = None
+    # Removing the state file is what tells the watcher to stop.
+    try:
+        os.remove(STATE)
+    except OSError:
+        pass
+    overlay("hide")
+
+    if not began:
+        return
+    pos = cursor_pos()
+    if not pos:
+        return
+    travelled = abs(pos[0] - began["x"]) + abs(pos[1] - began["y"])
+    if travelled < MIN_TRAVEL:
+        return
+
+    region = region_at(monitors(), *pos)
+    if region:
+        subprocess.run([os.path.join(HERE, "macos-snap"), region],
+                       capture_output=True, text=True)
+
+
+if __name__ == "__main__":
+    action = sys.argv[1] if len(sys.argv) > 1 else ""
+    if action == "start":
+        start()
+    elif action == "end":
+        end()
+    elif action == "region":       # for debugging: print the region under the cursor
+        pos = cursor_pos()
+        print(region_at(monitors(), *pos) if pos else "no cursor")
+    else:
+        sys.exit("usage: macos-drag-snap start|end|region")

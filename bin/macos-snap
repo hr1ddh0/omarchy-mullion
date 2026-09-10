@@ -47,6 +47,44 @@ def hyprctl_json(*args):
     return json.loads(out.stdout)
 
 
+def focused_monitor(monitors=None):
+    monitors = monitors if monitors is not None else hyprctl_json("monitors")
+    return next((m for m in monitors if m.get("focused")), None) or monitors[0]
+
+
+def monitor_bounds(monitor):
+    """Full monitor rectangle in layout coordinates, logical pixels."""
+    scale = monitor.get("scale") or 1
+    return (monitor["x"], monitor["y"],
+            int(monitor["width"] / scale), int(monitor["height"] / scale))
+
+
+def usable_area(monitor):
+    """Monitor rectangle minus whatever the bar reserves."""
+    mx, my, mw, mh = monitor_bounds(monitor)
+    # reserved = [left, top, right, bottom] -- the space the bar takes.
+    left, top, right, bottom = (monitor.get("reserved") or [0, 0, 0, 0])[:4]
+    return (mx + left, my + top, mw - left - right, mh - top - bottom)
+
+
+def region_boxes(monitor):
+    """Every named region as (x, y, w, h), in logical pixels."""
+    ux, uy, uw, uh = usable_area(monitor)
+    hw, hh = uw // 2, uh // 2
+    return {
+        "left":        (ux,      uy,      hw,      uh),
+        "right":       (ux + hw, uy,      uw - hw, uh),
+        "top":         (ux,      uy,      uw,      hh),
+        "bottom":      (ux,      uy + hh, uw,      uh - hh),
+        "topleft":     (ux,      uy,      hw,      hh),
+        "topright":    (ux + hw, uy,      uw - hw, hh),
+        "bottomleft":  (ux,      uy + hh, hw,      uh - hh),
+        "bottomright": (ux + hw, uy + hh, uw - hw, uh - hh),
+        "full":        (ux,      uy,      uw,      uh),
+        "center":      (ux + uw // 4, uy + uh // 8, uw // 2, uh * 3 // 4),
+    }
+
+
 def window_geometry(address):
     for client in hyprctl_json("clients"):
         if client.get("address") == address:
@@ -69,6 +107,12 @@ def dispatch(lua):
 
 
 def main():
+    if len(sys.argv) >= 3 and sys.argv[1] == "--box":
+        if sys.argv[2] not in REGIONS:
+            sys.exit("unknown region " + sys.argv[2])
+        print(*region_boxes(focused_monitor())[sys.argv[2]])
+        return
+
     if len(sys.argv) not in (2, 3) or sys.argv[1] not in REGIONS:
         sys.exit("usage: macos-snap " + " | ".join(REGIONS) + " [window-address]")
     region = sys.argv[1]
@@ -83,31 +127,8 @@ def main():
         if not address:
             sys.exit("no focused window")
 
-    monitors = hyprctl_json("monitors")
-    monitor = next((m for m in monitors if m.get("focused")), None) or monitors[0]
-
-    scale = monitor.get("scale") or 1
-    mw = int(monitor["width"] / scale)
-    mh = int(monitor["height"] / scale)
-    # reserved = [left, top, right, bottom] -- the space the bar takes.
-    left, top, right, bottom = (monitor.get("reserved") or [0, 0, 0, 0])[:4]
-
-    ux, uy = monitor["x"] + left, monitor["y"] + top
-    uw, uh = mw - left - right, mh - top - bottom
-    hw, hh = uw // 2, uh // 2
-
-    boxes = {
-        "left":        (ux,      uy,      hw,      uh),
-        "right":       (ux + hw, uy,      uw - hw, uh),
-        "top":         (ux,      uy,      uw,      hh),
-        "bottom":      (ux,      uy + hh, uw,      uh - hh),
-        "topleft":     (ux,      uy,      hw,      hh),
-        "topright":    (ux + hw, uy,      uw - hw, hh),
-        "bottomleft":  (ux,      uy + hh, hw,      uh - hh),
-        "bottomright": (ux + hw, uy + hh, uw - hw, uh - hh),
-        "full":        (ux,      uy,      uw,      uh),
-        "center":      (ux + uw // 4, uy + uh // 8, uw // 2, uh * 3 // 4),
-    }
+    monitor = focused_monitor()
+    boxes = region_boxes(monitor)
 
     # Compose with the window's current region so arrows behave like Windows.
     if region in ("left", "right", "top", "bottom"):

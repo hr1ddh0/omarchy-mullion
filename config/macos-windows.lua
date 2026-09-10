@@ -57,9 +57,9 @@ if hl.plugin.hyprbars then
   hl.config({
     plugin = {
       hyprbars = {
-        bar_height = 30,
+        bar_height = 28,
         bar_padding = 12,
-        bar_button_padding = 9,
+        bar_button_padding = 8,
         bar_text_size = 11,
         bar_text_font = "JetBrainsMono Nerd Font",
         bar_text_align = "center",
@@ -84,7 +84,7 @@ if hl.plugin.hyprbars then
   hl.plugin.hyprbars.add_button({
     bg_color = "rgb(ff5f57)",
     fg_color = "rgb(2b0603)",
-    size = 16,
+    size = 12,
     icon = "✕",
     action = [[hyprctl dispatch 'hl.dsp.window.close()']],
   })
@@ -95,7 +95,7 @@ if hl.plugin.hyprbars then
   hl.plugin.hyprbars.add_button({
     bg_color = "rgb(febc2e)",
     fg_color = "rgb(3a2806)",
-    size = 16,
+    size = 12,
     icon = "−",
     action = [[hyprctl dispatch 'hl.dsp.window.move({ workspace = "special:omarchy-minimized", follow = false })']],
   })
@@ -105,7 +105,7 @@ if hl.plugin.hyprbars then
   hl.plugin.hyprbars.add_button({
     bg_color = "rgb(28c840)",
     fg_color = "rgb(05240b)",
-    size = 16,
+    size = 12,
     icon = "+",
     action = [[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
   })
@@ -132,9 +132,9 @@ end
 -- taken by Omarchy (focus, swap, and window groups).
 -- SUPER + arrows, the same keys Windows uses, so there is nothing to learn.
 --
--- These four were Omarchy's directional window focus. That is a tiling-first
--- idea and this setup is floating-first, so focus moves to SUPER+SHIFT+CTRL
--- (rebound below) and the arrows do the thing you reach for far more often.
+-- These four were Omarchy's directional window focus -- a tiling-first idea
+-- that this floating-first setup does not need, so they are given over to
+-- snapping entirely. Focus follows the mouse and clicks, as on macOS.
 hl.unbind("SUPER + LEFT")
 hl.unbind("SUPER + RIGHT")
 hl.unbind("SUPER + UP")
@@ -147,14 +147,26 @@ o.bind("SUPER + DOWN", "Snap window down / quarter", "macos-snap bottom")
 
 -- Arrows compose, exactly like Windows Snap: LEFT then UP puts the window in
 -- the top-left quarter, so four apps tile a workspace with two presses each.
-o.bind("SUPER + backslash", "Snap window to full screen", "macos-snap full")
-o.bind("SUPER + SHIFT + backslash", "Center window", "macos-snap center")
+-- That is the whole split-screen surface -- no second set of keys for it.
+--
+-- `macos-snap full` and `center` still exist as commands if you ever want to
+-- bind them, but full screen is already SUPER+F and the green title-bar
+-- button, so they are deliberately left unbound.
 
--- Directional focus, relocated from the bare arrows.
-o.bind("SUPER + SHIFT + CTRL + LEFT", "Focus window to the left", hl.dsp.focus({ direction = "l" }))
-o.bind("SUPER + SHIFT + CTRL + RIGHT", "Focus window to the right", hl.dsp.focus({ direction = "r" }))
-o.bind("SUPER + SHIFT + CTRL + UP", "Focus window above", hl.dsp.focus({ direction = "u" }))
-o.bind("SUPER + SHIFT + CTRL + DOWN", "Focus window below", hl.dsp.focus({ direction = "d" }))
+-- ---------------------------------------------------------------------------
+-- Drag a window to a screen edge to snap it there, with a live preview of
+-- where it will land -- the behavior Windows calls Aero Snap.
+--
+--   edges   -> half screen (top edge fills the screen)
+--   corners -> quarter screen, so four windows tile one workspace
+--
+-- Hyprland has no drag events, so the press and release of the same
+-- SUPER + left-drag that moves a window mark the start and end of one. Both
+-- binds are non-consuming, so Omarchy's own "Move window" binding still runs
+-- and the drag itself behaves exactly as before -- if this is removed, nothing
+-- about dragging changes.
+o.bind("SUPER + mouse:272", "Begin drag-snap", "macos-drag-snap start", { non_consuming = true })
+o.bind("SUPER + mouse:272", "Finish drag-snap", "macos-drag-snap end", { non_consuming = true, release = true })
 
 -- ---------------------------------------------------------------------------
 -- Mac muscle memory. SUPER stands in for Command.
