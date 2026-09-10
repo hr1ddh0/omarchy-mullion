@@ -121,6 +121,9 @@ if hl.plugin.hyprbars then
     fg_color = "rgb(000000)",
     size = 12,
     icon = "󰘖",
+    -- The font's arrows run NE-SW; macOS runs them NW-SE and no installed
+    -- font carries the mirrored twin, so the build patch flips the glyph.
+    mirror = true,
     action = [[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
   })
 else

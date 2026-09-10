@@ -9,8 +9,9 @@ plainly visible.
 This centres the glyph inside the very same rounded box the circle is drawn
 into, so the two cannot disagree.
 
-Usage: center-button-icons.py <path to hyprbars/barDeco.cpp>
+Usage: center-button-icons.py <hyprbars source dir>
 """
+import os
 import sys
 
 OLD = """        const auto iconX = barBox->x + (BUTTONSRIGHT ? barBox->width - offset - scaledButtonSize / 2.0 : offset + scaledButtonSize / 2.0) - button.iconTex->m_size.x / 2.0;
@@ -29,7 +30,7 @@ NEW = """        // Centre the glyph inside the same rounded box renderBarButton
 
 
 def main():
-    path = sys.argv[1]
+    path = os.path.join(sys.argv[1], "barDeco.cpp")
     src = open(path).read()
     if NEW.split("\n")[-1] in src and "iconButtonBox" in src:
         print("  already patched")

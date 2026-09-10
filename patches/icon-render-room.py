@@ -11,8 +11,9 @@ Two upstream choices make the marks hard to read at a macOS-sized 12px dot:
 This nudges the scale up slightly and lets the layout use the room it needs.
 Both are cosmetic, so a mismatch is skipped rather than failing the build.
 
-Usage: icon-render-room.py <path to hyprbars/barDeco.cpp>
+Usage: icon-render-room.py <hyprbars source dir>
 """
+import os
 import sys
 
 OLD = ('button.iconTex = g_pHyprRenderer->renderText(button.icon, fgcol, '
@@ -22,7 +23,7 @@ NEW = ('button.iconTex = g_pHyprRenderer->renderText(button.icon, fgcol, '
 
 
 def main():
-    path = sys.argv[1]
+    path = os.path.join(sys.argv[1], "barDeco.cpp")
     src = open(path).read()
     if NEW in src:
         print("  already patched")

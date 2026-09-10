@@ -39,7 +39,7 @@ if [[ -n ${PATCHES:-} && -d $PATCHES ]]; then
   echo "Applying local patches:"
   for patch in "$PATCHES"/*.py; do
     [[ -e $patch ]] || continue
-    python3 "$patch" "$WORK/hlp/hyprbars/barDeco.cpp" || true
+    python3 "$patch" "$WORK/hlp/hyprbars" || true
   done
 fi
 

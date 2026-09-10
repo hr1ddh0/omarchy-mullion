@@ -112,6 +112,13 @@ is plainly visible.
 `patches/center-button-icons.py` centres the glyph inside the very same rounded
 box the circle is drawn into.
 
+`patches/mirror-button-icons.py` adds an optional `mirror` field to
+`add_button`. macOS runs the green button's arrows on the NW-SE diagonal;
+Nerd Font's `arrow-expand` runs NE-SW, no installed font carries the mirrored
+twin, and Pango markup is unavailable so it cannot be composed. The patch draws
+the glyph with its U coordinates swapped, producing exactly the missing icon.
+It defaults to off, so buttons that don't ask for it are untouched.
+
 `patches/icon-render-room.py` fixes two more: the glyph was drawn at
 `size * 0.62`, leaving 7px on a macOS-sized dot — small enough that thin
 strokes vanish — and the text was laid out with `maxWidth` equal to the dot,
