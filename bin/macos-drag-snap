@@ -60,6 +60,9 @@ CORNER_SPAN = 140
 # does not rearrange anything.
 MIN_TRAVEL = 24
 POLL_SECONDS = 1 / 60
+# Floor between overlay updates, so a fast sweep across corners cannot spawn a
+# burst of IPC processes.
+MIN_UPDATE_SECONDS = 0.05
 # Safety net: never let a watcher outlive its drag if a release is missed.
 MAX_DRAG_SECONDS = 120
 
@@ -143,56 +146,106 @@ def region_at(mons, x, y):
     return None
 
 
-def box_for(region):
-    """The exact rectangle macos-snap would use, so the preview cannot lie."""
-    out = subprocess.run(
-        [os.path.join(HERE, "macos-snap"), "--box", region],
-        capture_output=True, text=True,
-    )
-    if out.returncode != 0:
-        return None
+def snap_module():
+    """Import macos-snap so its geometry runs in-process.
+
+    Shelling out to `macos-snap --box` cost ~23ms of interpreter start on every
+    zone change -- a visible hitch at the moment crossing an edge has to feel
+    instant. Importing it keeps one source of truth for the geometry while
+    making a zone change pure arithmetic.
+    """
+    import importlib.util
+    from importlib.machinery import SourceFileLoader
+
+    path = os.path.join(HERE, "macos-snap")
+    loader = SourceFileLoader("macos_snap", path)
+    spec = importlib.util.spec_from_loader("macos_snap", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def titlebar_height():
+    """hyprbars' bar height, read over the socket rather than via hyprctl."""
     try:
-        x, y, w, h = (int(v) for v in out.stdout.split())
-        return {"x": x, "y": y, "w": w, "h": h}
-    except ValueError:
-        return None
+        return max(0, int(json.loads(hypr("j/getoption plugin:hyprbars:bar_height"))["int"]))
+    except Exception:
+        return 0
 
 
-def overlay(method, payload=None):
-    args = [shell_tool("omarchy-shell"), "cupertino-snap", method]
+def overlay(method, payload=None, wait=False):
+    """Ask the bar widget to show or hide the preview.
+
+    Fire-and-forget by default: the reply is of no use mid-drag, and waiting on
+    it stalled the cursor loop for ~21ms every time the region changed.
+    """
+    args = [shell_tool("omarchy-shell"), "-q", "cupertino-snap", method]
     if payload is not None:
         args.append(json.dumps(payload))
     # omarchy-shell needs OMARCHY_PATH, and this runs from Hyprland's exec
     # where we cannot count on the session environment carrying it.
     env = dict(os.environ)
     env.setdefault("OMARCHY_PATH", "/usr/share/omarchy")
-    result = subprocess.run(args, capture_output=True, text=True, env=env)
-    if result.returncode != 0 or "not found" in (result.stdout + result.stderr):
-        log("overlay %s failed: %s%s" % (method, result.stdout.strip(), result.stderr.strip()))
+    try:
+        proc = subprocess.Popen(args, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, env=env)
+        if wait:
+            proc.wait(timeout=2)
+    except Exception as exc:
+        log("overlay %s failed: %s" % (method, exc))
 
 
 def watch():
     """Follow the cursor until the drag ends, previewing the target region."""
-    shown = None
     deadline = time.time() + MAX_DRAG_SECONDS
     mons = monitors()
 
+    # Everything the loop needs is computed once here, so following the cursor
+    # is arithmetic and a socket read -- no process ever starts per frame.
+    snap = snap_module()
+    boxes = {id(mon): snap.region_boxes(mon) for mon in mons}
+
+    shown = None            # region the overlay is currently displaying
+    pending = None          # region seen most recently
+    last_sent = 0.0
+
     while os.path.exists(STATE) and time.time() < deadline:
+        frame = time.time()
         pos = cursor_pos()
+
         if pos:
-            region = region_at(mons, *pos)
-            if region != shown:
-                if region:
-                    box = box_for(region)
+            mon = monitor_at(mons, *pos)
+            pending = region_at(mons, *pos)
+
+            # Sweeping across a corner can cross several regions in a few
+            # frames. Rate-limiting keeps that from starting a burst of
+            # processes, while the trailing send below guarantees the final
+            # region is always the one drawn.
+            if pending != shown and frame - last_sent >= MIN_UPDATE_SECONDS:
+                if pending:
+                    box = boxes[id(mon)].get(pending)
                     if box:
-                        overlay("show", box)
+                        overlay("show", {"x": box[0], "y": box[1],
+                                         "w": box[2], "h": box[3]})
                 else:
                     overlay("hide")
-                shown = region
-        time.sleep(POLL_SECONDS)
+                shown = pending
+                last_sent = frame
+
+        # Sleep out the remainder of the frame rather than a flat interval, so
+        # the poll rate holds steady regardless of how long the work took.
+        time.sleep(max(0.0, POLL_SECONDS - (time.time() - frame)))
+
+    # Trailing send: if the drag ended on a region we had rate-limited away,
+    # the preview would otherwise be left showing the wrong one.
+    if pending != shown and pending:
+        box = boxes[id(monitor_at(mons, *(cursor_pos() or (0, 0))))].get(pending)
+        if box:
+            overlay("show", {"x": box[0], "y": box[1], "w": box[2], "h": box[3]})
+        shown = pending
 
     if shown:
-        overlay("hide")
+        overlay("hide", wait=True)
 
 
 def start():
@@ -241,7 +294,11 @@ def end():
     region = region_at(mons, *pos)
     log("drag end at %s, travelled %d, region %s" % (pos, travelled, region))
     if region:
-        subprocess.run([os.path.join(HERE, "macos-snap"), region],
+        # --exact, because dragging to an edge means that edge. Composition
+        # belongs to the arrow keys, where a second direction refines the
+        # first; applying it here would turn a drag to the left edge into a
+        # quarter whenever the window happened to be half-height already.
+        subprocess.run([os.path.join(HERE, "macos-snap"), "--exact", region],
                        capture_output=True, text=True)
     else:
         keep_below_bar(mons)

@@ -1,16 +1,23 @@
 -- Append to ~/.config/omarchy/themed/hyprland.lua.tpl (create it by copying
 -- $OMARCHY_PATH/default/themed/hyprland.lua.tpl first). Makes the title bar and
--- the focused-window glow follow whichever Omarchy theme is active.
+-- the window borders follow whichever Omarchy theme is active.
 
--- Neon glow on the focused window, tinted with the current theme's accent.
+-- Window elevation: a soft macOS-style drop shadow.
 hl.config({
   decoration = {
     shadow = {
       enabled = true,
-      range = 26,
+      -- A macOS drop shadow is large and very soft rather than tight: a wide
+      -- blur at low opacity reads as elegant depth, where the same spread in a
+      -- saturated colour read as a smear. Neutral black also lets the neon
+      -- gradient border stay the thing that carries the accent.
+      range = 32,
       render_power = 3,
-      color = "rgba({{ accent_strip }}33)",
-      color_inactive = "rgba(00000000)",
+      -- Cast downward, so the light reads as coming from above.
+      offset = "0 10",
+      color = "rgba(00000073)",
+      -- Unfocused windows sit back, so the focused one is obviously on top.
+      color_inactive = "rgba(00000038)",
     },
   },
 })

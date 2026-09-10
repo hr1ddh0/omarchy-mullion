@@ -134,6 +134,13 @@ def dispatch(lua):
 
 
 def main():
+    exact = False
+    if len(sys.argv) >= 2 and sys.argv[1] == "--exact":
+        # Dragging to an edge means that edge, full stop. Composition is for
+        # the arrow keys, where pressing a second direction refines the first.
+        exact = True
+        del sys.argv[1]
+
     if len(sys.argv) >= 3 and sys.argv[1] == "--box":
         if sys.argv[2] not in REGIONS:
             sys.exit("unknown region " + sys.argv[2])
@@ -141,7 +148,7 @@ def main():
         return
 
     if len(sys.argv) not in (2, 3) or sys.argv[1] not in REGIONS:
-        sys.exit("usage: macos-snap " + " | ".join(REGIONS) + " [window-address]")
+        sys.exit("usage: macos-snap [--exact] " + " | ".join(REGIONS) + " [window-address]")
     region = sys.argv[1]
 
     if len(sys.argv) == 3:
@@ -159,7 +166,7 @@ def main():
     boxes = placement_boxes(monitor)
 
     # Compose with the window's current region so arrows behave like Windows.
-    if region in ("left", "right", "top", "bottom"):
+    if not exact and region in ("left", "right", "top", "bottom"):
         current = current_region(window_geometry(address), boxes)
         region = COMPOSE.get((current, region), region)
 

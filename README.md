@@ -153,10 +153,20 @@ Hyprland exposes no drag events, so drags are picked up from two places:
   behaves exactly as it did before.
 
 While the button is held, a watcher follows the cursor over Hyprland's command
-socket — about 0.03 ms per read, so 60 Hz costs nothing, and only for as long
-as you are actually dragging. It asks the bar widget to draw the preview, and
-on release the window is snapped. A drag shorter than 24 px is ignored, so a
-plain `SUPER`+click near an edge never rearranges anything.
+socket — 0.064 ms a read, so 60 Hz costs nothing, and only for as long as you
+are actually dragging. A drag shorter than 24 px is ignored, so a plain
+`SUPER`+click near an edge never rearranges anything.
+
+Every frame is arithmetic and one socket read: **0.076 ms**, against a 16.7 ms
+budget at 60 Hz. The geometry is imported from `macos-snap` rather than shelled
+out to, so one source of truth is kept without paying 23 ms of interpreter
+start per region change, and the overlay call is fire-and-forget rather than
+waiting 21 ms on a reply. Overlay updates are floored at 50 ms apart so a fast
+sweep across corners cannot spawn a burst of IPC processes, with a trailing
+send guaranteeing the final region is the one drawn.
+
+A drag snaps to the edge you dropped on, exactly. Composition into quarters
+belongs to the arrow keys, where a second direction refines the first.
 
 ## What the bar widget does
 
