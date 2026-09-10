@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "hriddho.cupertino",
+  "name": "Cupertino",
+  "version": "1.0.0",
+  "author": "S M Ashikuzzaman Hriddho",
+  "license": "MIT",
+  "description": "macOS-style windows for Omarchy: traffic-light title bars, drag to move, edge resize, minimize to the bar, and half-screen snapping.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Cupertino",
+    "description": "Keeps the macOS-style title bars healthy. Hidden while they work; one-click fix when a Hyprland update stops them loading.",
+    "category": "Compositor",
+    "aliases": [
+      "macos", "mac", "apple", "cupertino",
+      "titlebar", "title bar", "traffic lights", "window controls",
+      "minimize", "maximize", "close", "zoom",
+      "snap", "split screen", "half screen", "tiling",
+      "drag", "resize", "hyprbars"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "left",
+    "defaults": {
+      "checkIntervalMinutes": 10,
+      "alwaysShow": false
+    },
+    "schema": [
+      { "key": "checkIntervalMinutes", "type": "number", "label": "Check interval (minutes)" },
+      { "key": "alwaysShow", "type": "boolean", "label": "Show even when title bars are healthy" }
+    ]
+  }
+}

@@ -15,7 +15,14 @@ command -v hyprctl >/dev/null || die "hyprctl not found."
 command -v g++ >/dev/null || die "g++ not found. Install base-devel."
 
 say "Building the hyprbars title-bar plugin"
+mkdir -p "$HOME/.local/bin"
 install -m755 "$HERE/bin/rebuild-hyprbars" "$HOME/.local/bin/rebuild-hyprbars"
+install -m755 "$HERE/bin/macos-snap" "$HOME/.local/bin/macos-snap"
+
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) echo "Note: ~/.local/bin is not on your PATH; the snap keybindings need it." ;;
+esac
 "$HOME/.local/bin/rebuild-hyprbars"
 
 say "Installing the window-shelf bar widget (minimize)"

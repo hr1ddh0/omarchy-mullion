@@ -1,8 +1,8 @@
-# Omarchy macOS Windows
+# Cupertino
 
-macOS-style window handling for [Omarchy](https://omarchy.org): traffic-light
-title bars, drag-to-move, edge resize, and a minimize that you can actually
-find again.
+macOS-style windows for [Omarchy](https://omarchy.org) — traffic-light title
+bars, drag to move, edge resize, half-screen snapping, and a minimize you can
+actually find again.
 
 ![traffic lights](assets/titlebar.png)
 
@@ -14,6 +14,13 @@ find again.
 - **Drag any edge or corner** to resize, with no modifier key held.
 - **Minimize that is visible** — minimized windows become clickable chips in
   the bar instead of vanishing. Click a chip to bring the window back.
+- **Split screen on the arrow keys**, the same ones Windows uses. `SUPER + ←`
+  takes the left half; follow it with `SUPER + ↑` and the window becomes the
+  top-left quarter, so four apps tile one workspace with two presses each.
+  Geometry comes from the real monitor and the bar's reserved area, so halves
+  meet with no gap at any resolution, scale, or bar position.
+- **Magnetic dragging** — a dragged window sticks to screen edges and to other
+  windows as it gets close, so things line up without pixel-hunting.
 - **Floating windows** by default, centered on open, remembering their size.
 - **Follows your theme** — the title bar and the focused-window glow are tinted
   from the active Omarchy theme's colors, and retrack when you switch themes.
@@ -21,10 +28,19 @@ find again.
 ## Install
 
 ```bash
-git clone https://github.com/<you>/omarchy-macos-windows.git
-cd omarchy-macos-windows
+git clone https://github.com/<you>/omarchy-cupertino.git
+cd omarchy-cupertino
 ./install.sh
 ```
+
+The bar widget half can also be installed straight from the marketplace:
+
+```bash
+omarchy plugin add https://github.com/<you>/omarchy-cupertino.git --enable
+```
+
+That gives you the health widget, which will then offer to run `install.sh`
+for the title bars themselves.
 
 The installer builds the title-bar plugin against your exact Hyprland build,
 installs the minimize widget, patches `~/.config/hypr/hyprland.lua` (keeping a
@@ -40,6 +56,10 @@ timestamped backup), and reloads.
 
 | Key | Action |
 | --- | --- |
+| `SUPER + ←/→/↑/↓` | Snap to that half — press twice across axes for a quarter |
+| `SUPER + \` | Snap to the full screen |
+| `SUPER + SHIFT + \` | Center the window |
+| `SUPER + SHIFT + CTRL + ←/→/↑/↓` | Move focus between windows |
 | `SUPER + M` | Minimize the focused window to the shelf |
 | `SUPER + T` | Tile the focused window (float is the default here) |
 | `SUPER + W` | Close the focused window |
@@ -72,6 +92,16 @@ hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })'   # works
 ```
 
 Minimized windows are restored to your current workspace first.
+
+## What the bar widget does
+
+The title bars are drawn by a **compiled** Hyprland plugin, which is tied to
+the exact Hyprland build it was compiled against. An update that bumps
+Hyprland makes the bars silently stop appearing — nothing errors, they are just
+gone, and the reason is not obvious.
+
+The Cupertino widget watches for exactly that. It stays hidden while everything
+works, and shows a single glyph with a one-click fix when it doesn't.
 
 ## Built on
 

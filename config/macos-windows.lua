@@ -26,6 +26,14 @@ hl.config({
     extend_border_grab_area = 15,
     -- Show the resize cursor when hovering an edge.
     hover_icon_on_border = true,
+
+    -- Magnetic snapping: a dragged window sticks to screen edges and to other
+    -- windows when it gets close, so windows line up without pixel-hunting.
+    snap = {
+      enabled = true,
+      window_gap = 10,
+      monitor_gap = 10,
+    },
   },
 })
 
@@ -57,8 +65,10 @@ if hl.plugin.hyprbars then
         bar_text_align = "center",
         -- Traffic lights on the left, like macOS.
         bar_buttons_alignment = "left",
-        -- Glyphs appear inside the dots only on hover, like macOS.
-        icon_on_hover = true,
+        -- Keep the glyphs visible rather than hover-only: at this size they
+        -- read as crisp marks, and always-on is easier to hit accurately.
+        -- Set this back to true for strict macOS hover behavior.
+        icon_on_hover = false,
         -- The bar reserves its own space rather than covering the window.
         bar_part_of_window = true,
         bar_precedence_over_border = true,
@@ -73,8 +83,8 @@ if hl.plugin.hyprbars then
   -- Close.
   hl.plugin.hyprbars.add_button({
     bg_color = "rgb(ff5f57)",
-    fg_color = "rgba(000000aa)",
-    size = 12,
+    fg_color = "rgb(2b0603)",
+    size = 16,
     icon = "✕",
     action = [[hyprctl dispatch 'hl.dsp.window.close()']],
   })
@@ -84,8 +94,8 @@ if hl.plugin.hyprbars then
   -- shows it as a clickable chip -- click the chip to bring it back.
   hl.plugin.hyprbars.add_button({
     bg_color = "rgb(febc2e)",
-    fg_color = "rgba(000000aa)",
-    size = 12,
+    fg_color = "rgb(3a2806)",
+    size = 16,
     icon = "−",
     action = [[hyprctl dispatch 'hl.dsp.window.move({ workspace = "special:omarchy-minimized", follow = false })']],
   })
@@ -94,16 +104,57 @@ if hl.plugin.hyprbars then
   -- size and position on a second click, like the macOS green button.
   hl.plugin.hyprbars.add_button({
     bg_color = "rgb(28c840)",
-    fg_color = "rgba(000000aa)",
-    size = 12,
+    fg_color = "rgb(05240b)",
+    size = 16,
     icon = "+",
     action = [[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
   })
 else
-  -- Cold start: the plugin loaded during this very parse, so re-read the
-  -- config once at launch to pick up its Lua API and draw the buttons.
-  o.exec_on_start("hyprctl reload")
+  -- The plugin loaded during this very parse, so its Lua API only becomes
+  -- visible on the next one. Re-read the config once to pick it up.
+  --
+  -- o.exec_on_start fires only at login, which would leave a live
+  -- `hyprctl reload` with default-styled bars and no buttons, so trigger the
+  -- re-read directly. The marker file rate-limits it to once every 10s, so a
+  -- plugin that never exposes its API cannot spin us in a reload loop.
+  local marker = "/tmp/cupertino-reload-" .. (os.getenv("USER") or "user")
+  hl.exec_cmd("sh -c 'now=$(date +%s); last=$(cat " .. marker .. " 2>/dev/null || echo 0); "
+    .. "if [ $((now - last)) -ge 10 ]; then echo $now > " .. marker
+    .. "; sleep 1; hyprctl reload; fi'")
 end
+
+-- ---------------------------------------------------------------------------
+-- Split screen. Snap the focused window to half the screen, the way macOS
+-- tiling and Windows Snap do. The helper reads the real monitor geometry and
+-- the bar's reserved area, so it is correct on any display.
+--
+-- SUPER + [ and SUPER + ] were free; every SUPER+arrow combination is already
+-- taken by Omarchy (focus, swap, and window groups).
+-- SUPER + arrows, the same keys Windows uses, so there is nothing to learn.
+--
+-- These four were Omarchy's directional window focus. That is a tiling-first
+-- idea and this setup is floating-first, so focus moves to SUPER+SHIFT+CTRL
+-- (rebound below) and the arrows do the thing you reach for far more often.
+hl.unbind("SUPER + LEFT")
+hl.unbind("SUPER + RIGHT")
+hl.unbind("SUPER + UP")
+hl.unbind("SUPER + DOWN")
+
+o.bind("SUPER + LEFT", "Snap window left / quarter", "macos-snap left")
+o.bind("SUPER + RIGHT", "Snap window right / quarter", "macos-snap right")
+o.bind("SUPER + UP", "Snap window up / quarter", "macos-snap top")
+o.bind("SUPER + DOWN", "Snap window down / quarter", "macos-snap bottom")
+
+-- Arrows compose, exactly like Windows Snap: LEFT then UP puts the window in
+-- the top-left quarter, so four apps tile a workspace with two presses each.
+o.bind("SUPER + backslash", "Snap window to full screen", "macos-snap full")
+o.bind("SUPER + SHIFT + backslash", "Center window", "macos-snap center")
+
+-- Directional focus, relocated from the bare arrows.
+o.bind("SUPER + SHIFT + CTRL + LEFT", "Focus window to the left", hl.dsp.focus({ direction = "l" }))
+o.bind("SUPER + SHIFT + CTRL + RIGHT", "Focus window to the right", hl.dsp.focus({ direction = "r" }))
+o.bind("SUPER + SHIFT + CTRL + UP", "Focus window above", hl.dsp.focus({ direction = "u" }))
+o.bind("SUPER + SHIFT + CTRL + DOWN", "Focus window below", hl.dsp.focus({ direction = "d" }))
 
 -- ---------------------------------------------------------------------------
 -- Mac muscle memory. SUPER stands in for Command.
