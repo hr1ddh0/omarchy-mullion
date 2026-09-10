@@ -1,4 +1,4 @@
-# Cupertino
+# Mullion
 
 macOS-style windows for [Omarchy](https://omarchy.org) — traffic-light title
 bars, drag to move, edge resize, half-screen snapping, and a minimize you can
@@ -34,15 +34,15 @@ actually find again.
 ## Install
 
 ```bash
-git clone https://github.com/<you>/omarchy-cupertino.git
-cd omarchy-cupertino
+git clone https://github.com/<you>/omarchy-mullion.git
+cd omarchy-mullion
 ./install.sh
 ```
 
 The bar widget half can also be installed straight from the marketplace:
 
 ```bash
-omarchy plugin add https://github.com/<you>/omarchy-cupertino.git --enable
+omarchy plugin add https://github.com/<you>/omarchy-mullion.git --enable
 ```
 
 That gives you the health widget, which will then offer to run `install.sh`
@@ -54,7 +54,7 @@ timestamped backup), and reloads.
 
 ## Settings
 
-Click the Cupertino icon in the bar. Everything is live — a change applies as
+Click the Mullion icon in the bar. Everything is live — a change applies as
 you make it, no restart.
 
 | | |
@@ -71,11 +71,11 @@ configured.
 It is a plain file underneath, so the terminal works too:
 
 ```bash
-cupertino-set rounding=14 shadow=false
-cupertino-set --list
+mullion-set rounding=14 shadow=false
+mullion-set --list
 ```
 
-Both write `~/.config/omarchy/cupertino.conf`, which the Hyprland config and
+Both write `~/.config/omarchy/mullion.conf`, which the Hyprland config and
 the snap helper read directly — the panel and the file cannot drift apart.
 
 ## Browsers that draw their own buttons
@@ -224,7 +224,7 @@ the exact Hyprland build it was compiled against. An update that bumps
 Hyprland makes the bars silently stop appearing — nothing errors, they are just
 gone, and the reason is not obvious.
 
-The Cupertino widget watches for exactly that. It stays hidden while everything
+The Mullion widget watches for exactly that. It stays hidden while everything
 works, and shows a single glyph with a one-click fix when it doesn't.
 
 ## Built on

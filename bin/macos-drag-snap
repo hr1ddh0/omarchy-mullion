@@ -5,7 +5,7 @@
     macos-drag-snap end     # bound to the matching release
 
 While the mouse button is held, a watcher follows the cursor and asks the
-Cupertino bar widget to draw a translucent highlight over the region the window
+Mullion bar widget to draw a translucent highlight over the region the window
 would land in. On release, the window is snapped to that region.
 
 Hyprland has no drag events, so the button bindings mark the drag and the
@@ -22,10 +22,10 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNTIME = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
-STATE = os.path.join(RUNTIME, "cupertino-drag.json")
+STATE = os.path.join(RUNTIME, "mullion-drag.json")
 # Overwritten at the start of each drag, so it never grows. Read it with
-# `cat $XDG_RUNTIME_DIR/cupertino-drag.log` if snapping ever misbehaves.
-LOG = os.path.join(RUNTIME, "cupertino-drag.log")
+# `cat $XDG_RUNTIME_DIR/mullion-drag.log` if snapping ever misbehaves.
+LOG = os.path.join(RUNTIME, "mullion-drag.log")
 
 
 def log(message, reset=False):
@@ -53,9 +53,9 @@ def shell_tool(name):
     return name
 
 def settings(path=None):
-    """Read ~/.config/omarchy/cupertino.conf. Missing keys use the defaults."""
+    """Read ~/.config/omarchy/mullion.conf. Missing keys use the defaults."""
     values = {"drag_snap": True, "snap_edge": 10, "snap_corner": 140}
-    path = path or os.path.expanduser("~/.config/omarchy/cupertino.conf")
+    path = path or os.path.expanduser("~/.config/omarchy/mullion.conf")
     try:
         for line in open(path):
             line = line.strip()
@@ -202,7 +202,7 @@ def overlay(method, payload=None, wait=False):
     Fire-and-forget by default: the reply is of no use mid-drag, and waiting on
     it stalled the cursor loop for ~21ms every time the region changed.
     """
-    args = [shell_tool("omarchy-shell"), "-q", "cupertino-snap", method]
+    args = [shell_tool("omarchy-shell"), "-q", "mullion-snap", method]
     if payload is not None:
         args.append(json.dumps(payload))
     # omarchy-shell needs OMARCHY_PATH, and this runs from Hyprland's exec

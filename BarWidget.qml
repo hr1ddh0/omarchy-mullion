@@ -16,7 +16,7 @@ import qs.Ui
 // surfaces a one-click fix when it doesn't.
 BarWidget {
   id: root
-  moduleName: "hriddho.cupertino"
+  moduleName: "hriddho.mullion"
 
   // "checking" until the first probe returns, so we never flash a warning
   // during startup before we know anything.
@@ -46,7 +46,7 @@ BarWidget {
     if (busy) return "Working on the title bars..."
     if (state === "missing") return "macOS title bars are not set up yet.\nClick to install them."
     if (state === "unloaded") return "Title bars stopped loading, usually after a Hyprland update.\nClick to rebuild them."
-    return "Cupertino settings"
+    return "Mullion settings"
   }
 
   function refresh() {
@@ -77,7 +77,7 @@ BarWidget {
   implicitHeight: button.implicitHeight
 
   property bool settingsOpen: false
-  // Current values, read back from cupertino-set so the panel always shows
+  // Current values, read back from mullion-set so the panel always shows
   // what is really in the file rather than a guess.
   property var values: ({})
 
@@ -97,7 +97,7 @@ BarWidget {
     for (var k in values) next[k] = values[k]
     next[key] = String(value)
     values = next
-    writeProc.command = [root.helper("cupertino-set"), key + "=" + String(value)]
+    writeProc.command = [root.helper("mullion-set"), key + "=" + String(value)]
     writeProc.running = true
   }
 
@@ -105,7 +105,7 @@ BarWidget {
 
   Process {
     id: readProc
-    command: [root.helper("cupertino-set"), "--list"]
+    command: [root.helper("mullion-set"), "--list"]
     stdout: StdioCollector {
       onStreamFinished: {
         var parsed = {}
@@ -123,7 +123,7 @@ BarWidget {
   Process { id: actionProc }
 
   IpcHandler {
-    target: "hriddho.cupertino"
+    target: "hriddho.mullion"
 
     function refresh(): void {
       root.broadcast("refresh")
@@ -289,7 +289,7 @@ BarWidget {
   }
 
   IpcHandler {
-    target: "cupertino-snap"
+    target: "mullion-snap"
 
     function show(payloadJson: string): string {
       var box = null
@@ -312,7 +312,7 @@ BarWidget {
 
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "cupertino-snap"
+    WlrLayershell.namespace: "mullion-snap"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
@@ -352,7 +352,7 @@ BarWidget {
   // hardcoded, so the panel restyles itself when the theme changes and follows
   // the user's font size without being told.
   //
-  // Controls write through cupertino-set, the same command the terminal uses,
+  // Controls write through mullion-set, the same command the terminal uses,
   // so the panel and the file can never disagree.
   PopupCard {
     id: settings
@@ -370,7 +370,7 @@ BarWidget {
       spacing: Style.space(6)
 
       Text {
-        text: "Cupertino"
+        text: "Mullion"
         color: Color.foreground
         font.family: Style.font.family
         font.pixelSize: Style.font.subtitle
@@ -406,50 +406,50 @@ BarWidget {
 
       PanelSectionHeader { text: "Title bar" }
 
-      CupertinoSlider {
+      MullionSlider {
         label: "Button size"; settingKey: "button_size"
         from: 8; to: 20; fallback: 12
       }
-      CupertinoSlider {
+      MullionSlider {
         label: "Bar height"; settingKey: "bar_height"
         from: 20; to: 44; fallback: 28
       }
-      CupertinoToggle {
+      MullionToggle {
         label: "Always show glyphs"; settingKey: "icons_always_visible"
         fallback: true
       }
 
       PanelSectionHeader { text: "Window" }
 
-      CupertinoSlider {
+      MullionSlider {
         label: "Corner rounding"; settingKey: "rounding"
         from: 0; to: 24; fallback: 10
       }
-      CupertinoSlider {
+      MullionSlider {
         label: "Border width"; settingKey: "border_size"
         from: 0; to: 8; fallback: 3
       }
-      CupertinoToggle {
+      MullionToggle {
         label: "Open windows floating"; settingKey: "float_by_default"
         fallback: true
       }
-      CupertinoToggle {
+      MullionToggle {
         label: "Drop shadow"; settingKey: "shadow"; fallback: true
       }
 
       PanelSectionHeader { text: "Snapping" }
 
-      CupertinoToggle {
+      MullionToggle {
         label: "Drag to edge to snap"; settingKey: "drag_snap"; fallback: true
       }
-      CupertinoSlider {
+      MullionSlider {
         label: "Edge sensitivity"; settingKey: "snap_edge"
         from: 4; to: 40; fallback: 10
       }
 
       PanelSectionHeader { text: "Other applications" }
 
-      CupertinoToggle {
+      MullionToggle {
         label: "Hide their window buttons"
         settingKey: "hide_app_window_buttons"
         fallback: true
@@ -473,7 +473,7 @@ BarWidget {
   }
 
   // A labelled row with a slider, bound to one settings key.
-  component CupertinoSlider: Item {
+  component MullionSlider: Item {
     property string label: ""
     property string settingKey: ""
     property real from: 0
@@ -521,7 +521,7 @@ BarWidget {
   }
 
   // A labelled row with an on/off control, bound to one settings key.
-  component CupertinoToggle: Item {
+  component MullionToggle: Item {
     property string label: ""
     property string settingKey: ""
     property bool fallback: true

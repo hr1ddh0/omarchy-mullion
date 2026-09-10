@@ -19,7 +19,7 @@ profile whose browser is running rather than having the change silently undone.
     use-system-titlebars --check   # report only, change nothing
 
 With no flag it follows hide_app_window_buttons in
-~/.config/omarchy/cupertino.conf, so the settings panel can drive it either way
+~/.config/omarchy/mullion.conf, so the settings panel can drive it either way
 by writing that key and re-running this.
 """
 import json
@@ -202,7 +202,7 @@ def firefox(check, hide):
 
 def wanted_state():
     """hide_app_window_buttons from the shared settings file."""
-    path = os.path.expanduser("~/.config/omarchy/cupertino.conf")
+    path = os.path.expanduser("~/.config/omarchy/mullion.conf")
     try:
         for line in open(path):
             key, _, raw = line.partition("=")

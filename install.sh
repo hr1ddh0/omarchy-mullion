@@ -20,22 +20,22 @@ install -m755 "$HERE/bin/rebuild-hyprbars" "$HOME/.local/bin/rebuild-hyprbars"
 install -m755 "$HERE/bin/macos-snap" "$HOME/.local/bin/macos-snap"
 install -m755 "$HERE/bin/macos-drag-snap" "$HOME/.local/bin/macos-drag-snap"
 install -m755 "$HERE/bin/use-system-titlebars" "$HOME/.local/bin/use-system-titlebars"
-install -m755 "$HERE/bin/cupertino-set" "$HOME/.local/bin/cupertino-set"
+install -m755 "$HERE/bin/mullion-set" "$HOME/.local/bin/mullion-set"
 
 # Default settings, only if the user has none: an upgrade must never discard
 # what they have tuned.
 mkdir -p "$HOME/.config/omarchy"
-if [[ ! -f $HOME/.config/omarchy/cupertino.conf ]]; then
-  cp "$HERE/config/cupertino.conf" "$HOME/.config/omarchy/cupertino.conf"
-  echo "Wrote default settings to ~/.config/omarchy/cupertino.conf"
+if [[ ! -f $HOME/.config/omarchy/mullion.conf ]]; then
+  cp "$HERE/config/mullion.conf" "$HOME/.config/omarchy/mullion.conf"
+  echo "Wrote default settings to ~/.config/omarchy/mullion.conf"
 else
-  echo "Keeping your existing ~/.config/omarchy/cupertino.conf"
+  echo "Keeping your existing ~/.config/omarchy/mullion.conf"
 fi
 
 # Patches applied to hyprbars at build time, kept where rebuild-hyprbars looks.
-mkdir -p "$HOME/.local/share/cupertino/patches"
+mkdir -p "$HOME/.local/share/mullion/patches"
 if compgen -G "$HERE/patches/*.py" >/dev/null; then
-  install -m755 "$HERE"/patches/*.py "$HOME/.local/share/cupertino/patches/"
+  install -m755 "$HERE"/patches/*.py "$HOME/.local/share/mullion/patches/"
 fi
 
 case ":$PATH:" in
@@ -52,7 +52,7 @@ else
 fi
 
 say "Installing the Hyprland config"
-cp "$HERE/config/macos-windows.lua" "$HOME/.config/hypr/macos-windows.lua"
+cp "$HERE/config/mullion.lua" "$HOME/.config/hypr/mullion.lua"
 
 HYPR="$HOME/.config/hypr/hyprland.lua"
 cp "$HYPR" "$HYPR.bak.$(date +%s)"
@@ -73,9 +73,9 @@ end)
 if anchor not in s:
     sys.exit("could not find require(\"default.hypr.omarchy\") in hyprland.lua")
 s = s.replace(anchor, block, 1)
-if 'require("hypr.macos-windows")' not in s:
+if 'require("hypr.mullion")' not in s:
     s = s.replace('require("hypr.looknfeel")',
-                  'require("hypr.looknfeel")\nrequire("hypr.macos-windows")', 1)
+                  'require("hypr.looknfeel")\nrequire("hypr.mullion")', 1)
 open(p, "w").write(s)
 PY
   echo "Patched hyprland.lua (backup written alongside it)."

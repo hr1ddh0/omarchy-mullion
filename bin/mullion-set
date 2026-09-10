@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Change Cupertino settings and apply them.
+"""Change Mullion settings and apply them.
 
-    cupertino-set rounding=14 shadow=false
-    cupertino-set --get rounding
-    cupertino-set --list
+    mullion-set rounding=14 shadow=false
+    mullion-set --get rounding
+    mullion-set --list
 
-Writes ~/.config/omarchy/cupertino.conf, preserving its comments and ordering,
+Writes ~/.config/omarchy/mullion.conf, preserving its comments and ordering,
 then applies whatever the changed keys affect: a Hyprland reload for anything
 the window config reads, and the window-button sweep when that setting moves.
 The settings panel drives this, so the panel and the command line cannot drift.
@@ -14,9 +14,9 @@ import os
 import subprocess
 import sys
 
-CONF = os.path.expanduser("~/.config/omarchy/cupertino.conf")
+CONF = os.path.expanduser("~/.config/omarchy/mullion.conf")
 DEFAULTS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        "..", "config", "cupertino.conf")
+                        "..", "config", "mullion.conf")
 
 # Keys whose change needs the app window-button sweep re-run.
 APP_BUTTON_KEYS = {"hide_app_window_buttons"}

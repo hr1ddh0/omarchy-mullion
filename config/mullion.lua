@@ -9,7 +9,7 @@
 -- colors live in ~/.config/omarchy/themed/hyprland.lua.tpl so they follow
 -- whichever Omarchy theme is active.
 --
--- To turn all of this off: delete the require("hypr.macos-windows") line and
+-- To turn all of this off: delete the require("hypr.mullion") line and
 -- the hl.plugin.load(...) block in ~/.config/hypr/hyprland.lua.
 --
 -- NOTE ON ACTIONS: Omarchy configures Hyprland in Lua, so `hyprctl dispatch`
@@ -19,7 +19,7 @@
 -- ---------------------------------------------------------------------------
 -- Settings.
 --
--- Everything tweakable lives in ~/.config/omarchy/cupertino.conf, written by
+-- Everything tweakable lives in ~/.config/omarchy/mullion.conf, written by
 -- the settings panel in the bar and equally editable by hand. Plain key=value
 -- so the Hyprland config, the drag-snap helper and the panel can all read the
 -- same file. Missing keys fall back to the defaults below, so a partial or
@@ -47,7 +47,7 @@ for key, value in pairs(defaults) do
 end
 
 do
-  local path = os.getenv("HOME") .. "/.config/omarchy/cupertino.conf"
+  local path = os.getenv("HOME") .. "/.config/omarchy/mullion.conf"
   local file = io.open(path, "r")
   if file then
     for line in file:lines() do
@@ -82,7 +82,7 @@ end
 
 -- Colours from the active theme, handed over by
 -- ~/.config/omarchy/themed/hyprland.lua.tpl earlier in this same parse.
-local theme = _G.cupertino_theme or {}
+local theme = _G.mullion_theme or {}
 local theme_foreground = theme.foreground or "#ffffff"
 
 -- macOS lifts a window with a large, very soft shadow. Windows 11 sits closer
@@ -183,7 +183,7 @@ if hl.plugin.hyprbars then
         -- Windows-style buttons have no plate, so the greying that unfocused
         -- traffic lights want would draw three circles that should not exist.
         inactive_button_color = style == "windows" and "rgba(00000000)"
-          or (_G.cupertino_theme and _G.cupertino_theme.muted) or "rgba(00000000)",
+          or (_G.mullion_theme and _G.mullion_theme.muted) or "rgba(00000000)",
         bar_text_align = style == "windows" and "left" or "center",
         -- macOS puts its lights on the left; Windows its caption buttons on
         -- the right.
@@ -274,7 +274,7 @@ else
   -- `hyprctl reload` with default-styled bars and no buttons, so trigger the
   -- re-read directly. The marker file rate-limits it to once every 10s, so a
   -- plugin that never exposes its API cannot spin us in a reload loop.
-  local marker = "/tmp/cupertino-reload-" .. (os.getenv("USER") or "user")
+  local marker = "/tmp/mullion-reload-" .. (os.getenv("USER") or "user")
   hl.exec_cmd("sh -c 'now=$(date +%s); last=$(cat " .. marker .. " 2>/dev/null || echo 0); "
     .. "if [ $((now - last)) -ge 10 ]; then echo $now > " .. marker
     .. "; sleep 1; hyprctl reload; fi'")
