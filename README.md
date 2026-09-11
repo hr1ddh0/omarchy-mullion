@@ -1,8 +1,9 @@
 # Mullion
 
-macOS-style windows for [Omarchy](https://omarchy.org) — traffic-light title
-bars, drag to move, edge resize, half-screen snapping, and a minimize you can
-actually find again.
+Window controls for [Omarchy](https://omarchy.org), in the style you choose —
+macOS traffic lights or Windows 11 caption buttons — with drag-to-edge
+snapping, split screen, edge resize, and a minimize you can actually find
+again.
 
 ![traffic lights](assets/titlebar.png)
 
