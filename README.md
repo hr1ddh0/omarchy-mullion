@@ -1,7 +1,7 @@
 # Mullion
 
-Window controls for [Omarchy](https://omarchy.org), in the style you choose —
-macOS traffic lights or Windows 11 caption buttons — with drag-to-edge
+Window controls for [Omarchy](https://omarchy.org), in the style you choose (macOS traffic lights or Windows 11 caption
+buttons), with drag-to-edge
 snapping, split screen, edge resize, and a minimize you can actually find
 again.
 
@@ -9,12 +9,12 @@ again.
 
 ## What you get
 
-- **Traffic lights on every window** — red closes, yellow minimizes, green
+- **Traffic lights on every window**: red closes, yellow minimizes, green
   zooms, carrying macOS's own marks: ✕, −, and the diagonal expand arrows that
   replaced the old "+" in Yosemite. Left-aligned and 12px, like macOS.
 - **Drag the title bar** to move a window; **double-click** it to zoom.
 - **Drag any edge or corner** to resize, with no modifier key held.
-- **Minimize that is visible** — minimized windows become clickable chips in
+- **Minimize that is visible**: minimized windows become clickable chips in
   the bar instead of vanishing. Click a chip to bring the window back.
 - **Split screen on the arrow keys**, the same ones Windows uses. `SUPER + ←`
   takes the left half; follow it with `SUPER + ↑` and the window becomes the
@@ -22,14 +22,14 @@ again.
   Geometry comes from the real monitor and the bar's reserved area, so halves
   meet with no gap at any resolution, scale, or bar position.
 - **Drag to an edge to snap it**, with a live translucent preview of where the
-  window will land — what Windows calls Aero Snap. Edges give halves, the top
+  window will land. Windows calls this Aero Snap. Edges give halves, the top
   edge fills the screen, and corners give quarters, so four windows tile a
   workspace by dragging alone. The preview rectangle is computed by the same
   code that performs the snap, so it can never show you the wrong target.
-- **Magnetic dragging** — a dragged window also sticks to screen edges and to
+- **Magnetic dragging**: a dragged window also sticks to screen edges and to
   other windows as it gets close, so things line up without pixel-hunting.
 - **Floating windows** by default, centered on open, remembering their size.
-- **Follows your theme** — the title bar and the focused-window glow are tinted
+- **Follows your theme**: the title bar and the focused-window glow are tinted
   from the active Omarchy theme's colors, and retrack when you switch themes.
 
 ## Install
@@ -38,8 +38,8 @@ again.
 omarchy plugin add https://github.com/hr1ddh0/omarchy-mullion.git --enable
 ```
 
-That adds the bar widget. `omarchy plugin add` never runs code from a plugin —
-by design — so the widget lands showing a **setup** icon. Click it once and it
+That adds the bar widget. `omarchy plugin add` never runs code from a plugin
+(by design), so the widget lands showing a **setup** icon. Click it once and it
 installs the rest in a visible terminal: the title-bar plugin built against
 your exact Hyprland, the snapping helpers, and the Hyprland config.
 
@@ -59,7 +59,7 @@ never discards your tuning.
 
 This is a bar widget that sets up a window-management layer, so it changes more
 than a bar widget usually does. All of it is listed here, and none of it happens
-when you add the plugin — `omarchy plugin add` only clones files. Everything
+when you add the plugin: `omarchy plugin add` only clones files. Everything
 below runs when **you** click the setup icon or run `./install.sh`, in a visible
 terminal.
 
@@ -84,7 +84,7 @@ leaves your settings file in place.
 
 ## Settings
 
-Click the Mullion icon in the bar. Everything is live — a change applies as you
+Click the Mullion icon in the bar. Everything is live: a change applies as you
 make it, no restart.
 
 | | |
@@ -111,7 +111,7 @@ mullion-set --list
 ```
 
 Both write `~/.config/omarchy/mullion.conf`, which the Hyprland config and the
-snap helper read directly — the panel and the file cannot drift apart.
+snap helper read directly, so the panel and the file cannot drift apart.
 
 ## Browsers and apps that draw their own buttons
 
@@ -120,7 +120,7 @@ frame by default, so alongside this plugin's controls you get a second,
 redundant close button. `use-system-titlebars` turns that off across all three
 families, and the **Other applications** toggle drives it either way.
 
-The GTK setting is a shared one, so it covers every header-bar app at once —
+The GTK setting is a shared one, so it covers every header-bar app at once, 
 including ones neither of us thought to name.
 
 It refuses to touch a profile whose browser is running, because Chromium
@@ -142,7 +142,7 @@ use-system-titlebars --check   # report only
 
 | Key | Action |
 | --- | --- |
-| `SUPER + ←/→/↑/↓` | Snap to that half — press twice across axes for a quarter |
+| `SUPER + ←/→/↑/↓` | Snap to that half; press twice across axes for a quarter |
 | `SUPER + \` | Snap to the full screen |
 | `SUPER + SHIFT + \` | Center the window |
 | `SUPER + SHIFT + CTRL + ←/→/↑/↓` | Move focus between windows |
@@ -163,7 +163,7 @@ rebuild-hyprbars
 ## A note on `hyprctl dispatch`
 
 Omarchy configures Hyprland in Lua, so `hyprctl dispatch` takes a Lua
-expression. The old form fails **silently** — a button wired that way looks
+expression. The old form fails **silently**: a button wired that way looks
 fine and does nothing:
 
 ```bash
@@ -204,8 +204,8 @@ the glyph with its U coordinates swapped, producing exactly the missing icon.
 It defaults to off, so buttons that don't ask for it are untouched.
 
 `patches/icon-render-room.py` fixes two more: the glyph was drawn at
-`size * 0.62`, leaving 7px on a macOS-sized dot — small enough that thin
-strokes vanish — and the text was laid out with `maxWidth` equal to the dot,
+`size * 0.62`, leaving 7px on a macOS-sized dot (small enough that thin
+strokes vanish), and the text was laid out with `maxWidth` equal to the dot,
 truncating anything wider. It raises the scale slightly and lets the layout use
 the room it needs.
 
@@ -224,16 +224,16 @@ together fill the region exactly, with nothing tucked behind the bar.
 
 Hyprland exposes no drag events, so drags are picked up from two places:
 
-- **Dragging the title bar** — hyprbars listens to pointer events itself and
+- **Dragging the title bar**: hyprbars listens to pointer events itself and
   moves the window directly, so no Hyprland binding ever sees that drag.
   `patches/drag-snap-hooks.py` calls out from the two points hyprbars already
   knows about, where it begins and ends a drag.
-- **`SUPER` + drag** — bound on press and release. Both bindings are
+- **`SUPER` + drag**: bound on press and release. Both bindings are
   **non-consuming**, so Omarchy's own move binding still runs and dragging
   behaves exactly as it did before.
 
 While the button is held, a watcher follows the cursor over Hyprland's command
-socket — 0.064 ms a read, so 60 Hz costs nothing, and only for as long as you
+socket, 0.064 ms a read, so 60 Hz costs nothing, and only for as long as you
 are actually dragging. A drag shorter than 24 px is ignored, so a plain
 `SUPER`+click near an edge never rearranges anything.
 
@@ -252,7 +252,7 @@ belongs to the arrow keys, where a second direction refines the first.
 
 The title bars are drawn by a **compiled** Hyprland plugin, which is tied to
 the exact Hyprland build it was compiled against. An update that bumps
-Hyprland makes the bars silently stop appearing — nothing errors, they are just
+Hyprland makes the bars silently stop appearing. Nothing errors; they are just
 gone, and the reason is not obvious.
 
 The Mullion widget watches for exactly that. It stays hidden while everything
@@ -263,10 +263,10 @@ works, and shows a single glyph with a one-click fix when it doesn't.
 This project is the integration layer. The heavy lifting belongs to:
 
 - **[hyprbars](https://github.com/hyprwm/hyprland-plugins)** by Vaxry
-  (BSD-3-Clause) — draws the title bars. Built from the commit that
+  (BSD-3-Clause), which draws the title bars. Built from the commit that
   `hyprpm.toml` pins to your Hyprland version.
 - **[omarchy-minimize](https://github.com/gardnmi/omarchy-minimize)** by Mike
-  Gardner (MIT) — the bar chips for minimized windows. Installed as a
+  Gardner (MIT), which provides the bar chips for minimized windows. Installed as a
   dependency, not vendored.
 
 Neither is redistributed here; the installer fetches both from their own
@@ -274,4 +274,4 @@ sources.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

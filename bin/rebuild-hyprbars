@@ -3,7 +3,7 @@
 #
 # Hyprland plugins are tied to the exact Hyprland build they were compiled
 # against, so run this after an `omarchy update` that bumps Hyprland. Until you
-# do, title bars simply won't appear -- nothing else breaks.
+# do, title bars simply won't appear; nothing else breaks.
 set -euo pipefail
 
 DEST="$HOME/.local/share/hyprland/plugins/hyprbars.so"

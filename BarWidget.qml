@@ -11,7 +11,7 @@ import qs.Ui
 //
 // The title bars are drawn by hyprbars, a compiled Hyprland plugin. A compiled
 // plugin is tied to the exact Hyprland build it was compiled against, so an
-// update that bumps Hyprland makes the bars silently stop appearing -- nothing
+// update that bumps Hyprland makes the bars silently stop appearing. Nothing
 // errors, they are just gone, and it is not obvious why.
 //
 // This widget watches for that. It stays hidden while everything works, and
@@ -87,7 +87,7 @@ BarWidget {
   property bool settingsOpen: false
 
   // Bar.qml's findPanelWidget only treats a widget as panel-bearing when it
-  // exposes open(), close() and a defined `opened` -- see the check in
+  // exposes open(), close() and a defined `opened`; see the check in
   // plugins/bar/Bar.qml. Without this the shell's summon and hide routes
   // report "unknown", and it is also how the bar picks a single instance to
   // act on when one widget exists per monitor.
@@ -227,7 +227,7 @@ BarWidget {
     }
   }
 
-  // The mark: a window divided by a mullion -- the bar between panes the
+  // The mark: a window divided by a mullion, the bar between panes the
   // plugin is named for, and the thing it does most visibly, splitting a
   // screen between windows.
   //

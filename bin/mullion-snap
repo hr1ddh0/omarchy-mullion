@@ -62,7 +62,7 @@ def monitor_bounds(monitor):
 def usable_area(monitor):
     """Monitor rectangle minus whatever the bar reserves."""
     mx, my, mw, mh = monitor_bounds(monitor)
-    # reserved = [left, top, right, bottom] -- the space the bar takes.
+    # reserved = [left, top, right, bottom]: the space the bar takes.
     left, top, right, bottom = (monitor.get("reserved") or [0, 0, 0, 0])[:4]
     return (mx + left, my + top, mw - left - right, mh - top - bottom)
 

@@ -3,7 +3,7 @@
 
 Two upstream choices make the marks hard to read at a macOS-sized 12px dot:
 
-  * the glyph is drawn at size * 0.62, which leaves 7px -- small enough that
+  * the glyph is drawn at size * 0.62, which leaves 7px, small enough that
     thin strokes disappear;
   * the text is laid out with maxWidth = the button size, so any icon wider
     than the dot (a two-glyph mark, for instance) is truncated to an ellipsis.

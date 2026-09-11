@@ -9,7 +9,7 @@ Mullion bar widget to draw a translucent highlight over the region the window
 would land in. On release, the window is snapped to that region.
 
 Hyprland has no drag events, so the button bindings mark the drag and the
-cursor is polled over Hyprland's command socket -- about 0.03 ms per read, so
+cursor is polled over Hyprland's command socket, about 0.03 ms per read, so
 following it at 60 Hz costs nothing, and only for as long as the button is down.
 """
 import json
@@ -178,7 +178,7 @@ def snap_module():
     """Import mullion-snap so its geometry runs in-process.
 
     Shelling out to `mullion-snap --box` cost ~23ms of interpreter start on every
-    zone change -- a visible hitch at the moment crossing an edge has to feel
+    zone change, a visible hitch at the moment crossing an edge has to feel
     instant. Importing it keeps one source of truth for the geometry while
     making a zone change pure arithmetic.
     """
@@ -229,7 +229,7 @@ def watch():
     mons = monitors()
 
     # Everything the loop needs is computed once here, so following the cursor
-    # is arithmetic and a socket read -- no process ever starts per frame.
+    # is arithmetic and a socket read; no process ever starts per frame.
     snap = snap_module()
     # Keyed by name: object identity happens to work here only because every
     # lookup returns an element of this same list, which is too subtle to rely

@@ -133,7 +133,7 @@ sleep 1
 hyprctl configerrors || true
 
 # The drag preview talks to an IpcHandler inside the bar widget, and those
-# only bind when the shell loads the plugin -- a hot rescan is not enough.
+# only bind when the shell loads the plugin; a hot rescan is not enough.
 say "Restarting the shell so the snap preview registers"
 omarchy restart shell >/dev/null 2>&1 || true
 sleep 4

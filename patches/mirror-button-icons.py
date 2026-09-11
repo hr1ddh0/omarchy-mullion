@@ -3,7 +3,7 @@
 
 macOS's green button shows two arrows on the NW-SE diagonal. Nerd Font's
 arrow-expand runs the other way (NE-SW), and no installed font carries the
-mirrored twin -- Pango markup is unavailable, so it cannot be composed either.
+mirrored twin; Pango markup is unavailable, so it cannot be composed either.
 
 Rather than settle for the wrong diagonal, this adds an optional `mirror`
 field to add_button. When set, the glyph's texture is drawn with its U

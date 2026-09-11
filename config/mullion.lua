@@ -2,7 +2,7 @@
 --
 --   1. Title bars with red/yellow/green traffic lights. Drag a bar to move the
 --      window, double-click it to zoom.
---   2. Drag any window edge or corner to resize -- no modifier key needed.
+--   2. Drag any window edge or corner to resize, no modifier key needed.
 --   3. Windows float freely instead of being auto-tiled.
 --
 -- The title bar comes from the hyprbars plugin, loaded in hyprland.lua. Its
@@ -14,7 +14,7 @@
 --
 -- NOTE ON ACTIONS: Omarchy configures Hyprland in Lua, so `hyprctl dispatch`
 -- takes a Lua expression, not the old `hyprctl dispatch fullscreen 1` form.
--- The old form fails silently -- the button would look fine and do nothing.
+-- The old form fails silently: the button would look fine and do nothing.
 
 -- ---------------------------------------------------------------------------
 -- Settings.
@@ -215,8 +215,8 @@ if hl.plugin.hyprbars then
   -- them in the order that platform shows them.
   --
   -- macOS draws filled circles carrying the mark. Windows 11 draws no plate at
-  -- rest at all -- just the glyph on the bar, with the backplate appearing on
-  -- hover -- so its buttons use a fully transparent background and take their
+  -- rest at all: just the glyph on the bar, with the backplate appearing on
+  -- hover, so its buttons use a fully transparent background and take their
   -- colour from the theme's foreground.
   if style == "macos" then
     hl.plugin.hyprbars.add_button({
@@ -244,7 +244,7 @@ if hl.plugin.hyprbars then
       action = [[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
     })
   elseif style == "windows" then
-    -- Minimise, maximise, close -- reading left to right on screen, which is
+    -- Minimise, maximise, close: reading left to right on screen, which is
     -- the reverse of the order they are added when right-aligned.
     hl.plugin.hyprbars.add_button({
       bg_color = "rgba(00000000)",
@@ -298,7 +298,7 @@ end
 -- taken by Omarchy (focus, swap, and window groups).
 -- SUPER + arrows, the same keys Windows uses, so there is nothing to learn.
 --
--- These four were Omarchy's directional window focus -- a tiling-first idea
+-- These four were Omarchy's directional window focus, a tiling-first idea
 -- that this floating-first setup does not need, so they are given over to
 -- snapping entirely. Focus follows the mouse and clicks, as on macOS.
 hl.unbind("SUPER + LEFT")
@@ -313,7 +313,7 @@ o.bind("SUPER + DOWN", "Snap window down / quarter", "mullion-snap bottom")
 
 -- Arrows compose, exactly like Windows Snap: LEFT then UP puts the window in
 -- the top-left quarter, so four apps tile a workspace with two presses each.
--- That is the whole split-screen surface -- no second set of keys for it.
+-- That is the whole split-screen surface; no second set of keys for it.
 --
 -- `mullion-snap full` and `center` still exist as commands if you ever want to
 -- bind them, but full screen is already SUPER+F and the green title-bar
@@ -321,7 +321,7 @@ o.bind("SUPER + DOWN", "Snap window down / quarter", "mullion-snap bottom")
 
 -- ---------------------------------------------------------------------------
 -- Drag a window to a screen edge to snap it there, with a live preview of
--- where it will land -- the behavior Windows calls Aero Snap.
+-- where it will land. Windows calls this Aero Snap.
 --
 --   edges   -> half screen (top edge fills the screen)
 --   corners -> quarter screen, so four windows tile one workspace
@@ -329,7 +329,7 @@ o.bind("SUPER + DOWN", "Snap window down / quarter", "mullion-snap bottom")
 -- Hyprland has no drag events, so the press and release of the same
 -- SUPER + left-drag that moves a window mark the start and end of one. Both
 -- binds are non-consuming, so Omarchy's own "Move window" binding still runs
--- and the drag itself behaves exactly as before -- if this is removed, nothing
+-- and the drag itself behaves exactly as before; if this is removed, nothing
 -- about dragging changes.
 o.bind("SUPER + mouse:272", "Begin drag-snap", "mullion-drag-snap start", { non_consuming = true })
 o.bind("SUPER + mouse:272", "Finish drag-snap", "mullion-drag-snap end", { non_consuming = true, release = true })

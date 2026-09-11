@@ -2,14 +2,14 @@
 """Stop applications drawing their own window buttons.
 
 With title bars from this plugin, an app that also draws its own frame gives
-you two sets of window controls -- ours on the title bar, and its own close
+you two sets of window controls: ours on the title bar, and its own close
 button somewhere in its header. This turns the app-drawn ones off:
 
-  * Chromium, Chrome, Brave, Edge, Vivaldi -- "Use system title bar and
+  * Chromium, Chrome, Brave, Edge, Vivaldi: "Use system title bar and
     borders", which drops the close button at the right of the tab strip.
   * GTK / GNOME apps (Files, Text Editor, and anything with a header bar) --
     the shared button-layout that puts a close button in every header bar.
-  * Firefox -- the same idea, its own title bar drawing.
+  * Firefox: the same idea, its own title bar drawing.
 
 Chromium rewrites its Preferences file on exit, so this refuses to touch a
 profile whose browser is running rather than having the change silently undone.
@@ -230,7 +230,7 @@ def main():
         seen = True
         print("  %s" % subdir)
         if running(names):
-            print("    running right now -- close it and run this again, or it"
+            print("    running right now; close it and run this again, or it"
                   " will rewrite the file on exit")
             continue
         for path in found:

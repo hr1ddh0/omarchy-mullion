@@ -2,7 +2,7 @@
 """Drive drag-to-edge snapping from hyprbars' own title-bar drags.
 
 hyprbars listens to pointer events itself and moves the window when you drag
-its title bar, so a Hyprland mouse binding never sees that drag -- only
+its title bar, so a Hyprland mouse binding never sees that drag; only
 SUPER+drag reaches one. Dragging a window by its title bar, which is what
 anyone actually does, therefore produced no snap preview at all.
 
