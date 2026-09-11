@@ -35,7 +35,7 @@ again.
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/<you>/omarchy-mullion.git --enable
+omarchy plugin add https://github.com/hr1ddh0/omarchy-mullion.git --enable
 ```
 
 That adds the bar widget. `omarchy plugin add` never runs code from a plugin —
@@ -46,7 +46,7 @@ your exact Hyprland, the snapping helpers, and the Hyprland config.
 Prefer to do it by hand, or not use the marketplace at all:
 
 ```bash
-git clone https://github.com/<you>/omarchy-mullion.git
+git clone https://github.com/hr1ddh0/omarchy-mullion.git
 cd omarchy-mullion
 ./install.sh
 ```
