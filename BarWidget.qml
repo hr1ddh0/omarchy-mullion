@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -16,14 +18,14 @@ import qs.Ui
 // surfaces a one-click fix when it doesn't.
 BarWidget {
   id: root
-  moduleName: "ashikuzzaman.mullion"
+  moduleName: "hriddho.mullion"
 
   // "checking" until the first probe returns, so we never flash a warning
   // during startup before we know anything.
   //   healthy   - plugin built and loaded, title bars are drawn
   //   unloaded  - built but not loaded (usually: Hyprland was updated)
   //   missing   - never built on this machine
-  property string state: "checking"
+  property string health: "checking"
   property bool busy: false
 
   readonly property int checkIntervalMinutes: Math.max(1, Number(setting("checkIntervalMinutes", 10)))
@@ -39,13 +41,19 @@ BarWidget {
 
   // Healthy: a window mark, which is the settings affordance. Otherwise the
   // state's own glyph, and clicking fixes rather than opens settings.
-  readonly property string glyph: state === "healthy" ? "\uf2d0"
-    : state === "missing" ? "\uf0e7" : "\uf021"
+  readonly property string glyph: health === "healthy" ? "\uf2d0"
+    : health === "missing" ? "\uf0e7" : "\uf021"
 
   readonly property string tooltip: {
-    if (busy) return "Working on the title bars..."
-    if (state === "missing") return "macOS title bars are not set up yet.\nClick to install them."
-    if (state === "unloaded") return "Title bars stopped loading, usually after a Hyprland update.\nClick to rebuild them."
+    if (busy) return "Setting up..."
+    // Installing from the marketplace only clones this widget: `omarchy plugin
+    // add` deliberately never runs code from a plugin. So on a fresh install
+    // this is the state the user lands in, and it has to say plainly what is
+    // missing and that one click finishes it.
+    if (health === "missing") return "Mullion is not set up yet.\n"
+      + "Click to install the title bars, snapping and settings.\n"
+      + "It opens a terminal so you can see what it does."
+    if (health === "unloaded") return "Title bars stopped loading, usually after a Hyprland update.\nClick to rebuild them."
     return "Mullion settings"
   }
 
@@ -54,11 +62,11 @@ BarWidget {
   }
 
   function fix() {
-    if (busy || state === "healthy" || state === "checking") return
+    if (busy || health === "healthy" || health === "checking") return
     if (!root.bar) return
 
     // Absolute paths: this runs in a fresh terminal whose PATH we don't own.
-    var target = state === "missing"
+    var target = health === "missing"
       ? pluginDir + "install.sh"
       : "$HOME/.local/bin/rebuild-hyprbars"
 
@@ -77,6 +85,13 @@ BarWidget {
   implicitHeight: button.implicitHeight
 
   property bool settingsOpen: false
+
+  // Bar.qml's findPanelWidget only treats a widget as panel-bearing when it
+  // exposes open(), close() and a defined `opened` -- see the check in
+  // plugins/bar/Bar.qml. Without this the shell's summon and hide routes
+  // report "unknown", and it is also how the bar picks a single instance to
+  // act on when one widget exists per monitor.
+  readonly property bool opened: settingsOpen
   // Current values, read back from mullion-set so the panel always shows
   // what is really in the file rather than a guess.
   property var values: ({})
@@ -91,6 +106,24 @@ BarWidget {
   }
 
   function loadSettings() { if (!readProc.running) readProc.running = true }
+
+  // The lifecycle Omarchy routes `omarchy-shell shell summon <id>` and
+  // `shell hide <id>` to. Kept separate from the toggle so an explicit open
+  // never closes an already-open panel.
+  function open(payloadJson) {
+    root.loadSettings()
+    root.settingsOpen = true
+  }
+
+  function close() {
+    root.settingsOpen = false
+  }
+
+  // broadcast() can only relay no-argument methods.
+  function openSettings() {
+    root.loadSettings()
+    root.settingsOpen = true
+  }
 
   // No-argument, so broadcast() can relay it to every instance.
   function toggleSettings() {
@@ -129,7 +162,7 @@ BarWidget {
   Process { id: actionProc }
 
   IpcHandler {
-    target: "ashikuzzaman.mullion"
+    target: "hriddho.mullion"
 
     function refresh(): void {
       root.broadcast("refresh")
@@ -144,6 +177,11 @@ BarWidget {
     function settings(): void {
       root.broadcast("toggleSettings")
     }
+
+    // Relayed too: the instance owning the target is not necessarily the one
+    // whose popup is on screen.
+    function open(): void { root.broadcast("openSettings") }
+    function close(): void { root.broadcast("close") }
   }
 
   // Exit code carries the answer so we never have to parse stdout:
@@ -155,9 +193,9 @@ BarWidget {
       + "elif [ -f \"$HOME/.local/share/hyprland/plugins/hyprbars.so\" ]; then exit 1; "
       + "else exit 2; fi"]
     onExited: function(exitCode) {
-      if (exitCode === 0) root.state = "healthy"
-      else if (exitCode === 1) root.state = "unloaded"
-      else root.state = "missing"
+      if (exitCode === 0) root.health = "healthy"
+      else if (exitCode === 1) root.health = "unloaded"
+      else root.health = "missing"
       root.busy = false
     }
   }
@@ -182,17 +220,24 @@ BarWidget {
     onTriggered: {
       ticks++
       root.refresh()
-      if (ticks >= 8 || root.state === "healthy") {
+      if (ticks >= 8 || root.health === "healthy") {
         stop()
         root.busy = false
       }
     }
   }
 
-  // The mark: a rounded window whose left pane is filled -- the two things
-  // this plugin does, dress a window's frame and split the screen. Drawn
-  // rather than borrowed from an icon font, so it collides with nothing else
-  // in anyone's bar, and it inks itself from the theme like every other icon.
+  // The mark: a window divided by a mullion -- the bar between panes the
+  // plugin is named for, and the thing it does most visibly, splitting a
+  // screen between windows.
+  //
+  // It was a filled left pane, which is the standard "toggle sidebar" glyph in
+  // editors and browsers; at this size people read that meaning, not this one.
+  // A centred divider carries no such baggage, stays legible at 14px, and is
+  // distinct from every other icon in the bar.
+  //
+  // Drawn rather than borrowed from an icon font, so it collides with nothing
+  // in anyone else's bar, and it inks itself from the theme like the rest.
   Component {
     id: markComponent
 
@@ -216,7 +261,10 @@ BarWidget {
         var pad = Math.round((width - w) / 2)
         var top = Math.round((height - h) / 2)
         var r = Math.max(1, Math.round(w * 0.18))
-        var split = pad + Math.round(w * 0.38)
+        // The mullion itself: centred, and at least a pixel wide so it never
+        // disappears at small sizes or fractional scales.
+        var barW = Math.max(1, Math.round(w * 0.12))
+        var barX = pad + Math.round((w - barW) / 2)
 
         ctx.strokeStyle = ink
         ctx.fillStyle = ink
@@ -239,11 +287,12 @@ BarWidget {
         frame()
         ctx.stroke()
 
-        // Filled left pane: the snapped half.
+        // The divider, clipped to the frame so it never bleeds past the
+        // rounded corners.
         ctx.save()
         frame()
         ctx.clip()
-        ctx.fillRect(pad, top, split - pad, h)
+        ctx.fillRect(barX, top, barW, h)
         ctx.restore()
       }
     }
@@ -256,15 +305,15 @@ BarWidget {
     // Healthy state draws its own mark below rather than borrowing a font
     // glyph, so the icon is this plugin's and nobody else's. The unhealthy
     // states keep a glyph, because they need to read as a warning.
-    text: root.busy ? "\uf110" : (root.state === "healthy" ? "" : root.glyph)
+    text: root.busy ? "\uf110" : (root.health === "healthy" ? "" : root.glyph)
     // BarIconButton's own extension point: when set, it renders this in place
     // of a font glyph, correctly sized and optically centred for the bar.
-    iconComponent: (root.state === "healthy" && !root.busy) ? markComponent : null
+    iconComponent: (root.health === "healthy" && !root.busy) ? markComponent : null
     slotSize: Style.bar.statusSlot
     fontSize: Style.font.caption
     tooltipText: root.tooltip
     onPressed: {
-      if (root.state === "healthy" || root.state === "checking") {
+      if (root.health === "healthy" || root.health === "checking") {
         root.toggleSettings()
       } else {
         root.fix()

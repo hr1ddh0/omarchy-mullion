@@ -34,35 +34,68 @@ actually find again.
 ## Install
 
 ```bash
+omarchy plugin add https://github.com/<you>/omarchy-mullion.git --enable
+```
+
+That adds the bar widget. `omarchy plugin add` never runs code from a plugin —
+by design — so the widget lands showing a **setup** icon. Click it once and it
+installs the rest in a visible terminal: the title-bar plugin built against
+your exact Hyprland, the snapping helpers, and the Hyprland config.
+
+Prefer to do it by hand, or not use the marketplace at all:
+
+```bash
 git clone https://github.com/<you>/omarchy-mullion.git
 cd omarchy-mullion
 ./install.sh
 ```
 
-The bar widget half can also be installed straight from the marketplace:
+Either way `install.sh` is the same script, it keeps a timestamped backup of
+`hyprland.lua`, and it leaves an existing settings file alone so an upgrade
+never discards your tuning.
 
-```bash
-omarchy plugin add https://github.com/<you>/omarchy-mullion.git --enable
-```
+## What this installs, and what it touches
 
-That gives you the health widget, which will then offer to run `install.sh`
-for the title bars themselves.
+This is a bar widget that sets up a window-management layer, so it changes more
+than a bar widget usually does. All of it is listed here, and none of it happens
+when you add the plugin — `omarchy plugin add` only clones files. Everything
+below runs when **you** click the setup icon or run `./install.sh`, in a visible
+terminal.
 
-The installer builds the title-bar plugin against your exact Hyprland build,
-installs the minimize widget, patches `~/.config/hypr/hyprland.lua` (keeping a
-timestamped backup), and reloads.
+**It never uses sudo and never asks for a password.** Everything lands in your
+own home directory.
+
+| What | Where | Why |
+| --- | --- | --- |
+| Builds **hyprbars** from source | `~/.local/share/hyprland/plugins/hyprbars.so` | Hyprland draws no title bars; this is the only way to get them. Cloned from [hyprwm/hyprland-plugins](https://github.com/hyprwm/hyprland-plugins) at the commit `hyprpm.toml` pins to *your* Hyprland, then compiled locally. |
+| Applies 4 local patches to that source | build directory only | Centres the button glyphs, gives them room, mirrors one, and hooks title-bar drags. Each is skipped with a note if upstream changes, so a Hyprland update can never leave you unable to log in. |
+| Five commands | `~/.local/bin/` | `mullion-set`, `mullion-snap`, `mullion-drag-snap`, `rebuild-hyprbars`, `use-system-titlebars` |
+| One Hyprland config file | `~/.config/hypr/mullion.lua` | The window rules, bindings and title-bar setup |
+| Two lines in `hyprland.lua` | `~/.config/hypr/hyprland.lua` | Loads the above. A timestamped backup is written first. |
+| A block in the theme template | `~/.config/omarchy/themed/hyprland.lua.tpl` | So borders and the title bar follow your theme |
+| Settings | `~/.config/omarchy/mullion.conf` | Left alone if it already exists |
+| Installs **omarchy-minimize** | via `omarchy plugin add` | Minimised windows become bar chips. A separate plugin by Mike Gardner, not vendored. |
+| Changes GTK's window-button layout | `gsettings` + `~/.config/gtk-{3,4}.0/settings.ini` | Otherwise GNOME apps draw a second close button beside the title bar's. Reversible from the settings panel. |
+| Sets "use system title bar" | Chromium/Chrome/Brave/Edge/Vivaldi/Firefox profiles | Same reason. Backs each file up, refuses while the browser is running, reversible. |
+
+`./uninstall.sh` reverses all of it, restores the window buttons it hid, and
+leaves your settings file in place.
 
 ## Settings
 
-Click the Mullion icon in the bar. Everything is live — a change applies as
-you make it, no restart.
+Click the Mullion icon in the bar. Everything is live — a change applies as you
+make it, no restart.
 
 | | |
 | --- | --- |
+| **Window controls** | macOS traffic lights, Windows 11 caption buttons, or none |
 | **Title bar** | button size, bar height, glyphs always visible or on hover |
 | **Window** | corner rounding, border width, open floating, drop shadow |
 | **Snapping** | drag-to-edge on/off, edge sensitivity |
 | **Other applications** | hide the window buttons they draw themselves |
+
+Snapping, split screen and edge-resize behave identically whichever window
+style you pick; only the controls, title alignment and shadow change.
 
 The panel is built entirely from the shell's theme tokens, so it restyles
 itself when you change Omarchy themes and follows your font size without being
@@ -72,34 +105,31 @@ It is a plain file underneath, so the terminal works too:
 
 ```bash
 mullion-set rounding=14 shadow=false
+mullion-set window_style=windows
 mullion-set --list
 ```
 
-Both write `~/.config/omarchy/mullion.conf`, which the Hyprland config and
-the snap helper read directly — the panel and the file cannot drift apart.
+Both write `~/.config/omarchy/mullion.conf`, which the Hyprland config and the
+snap helper read directly — the panel and the file cannot drift apart.
 
-## Browsers that draw their own buttons
+## Browsers and apps that draw their own buttons
 
 Chromium-family browsers, GTK/GNOME apps and Firefox all draw their own window
-frame by default, so alongside this plugin's traffic lights you get a second,
+frame by default, so alongside this plugin's controls you get a second,
 redundant close button. `use-system-titlebars` turns that off across all three
-families; the installer runs it for you, and the **Other applications** toggle
-in the settings panel drives it either way.
+families, and the **Other applications** toggle drives it either way.
 
 The GTK setting is a shared one, so it covers every header-bar app at once —
 including ones neither of us thought to name.
 
 It refuses to touch a profile whose browser is running, because Chromium
-rewrites its preferences on exit and would silently undo the change. Close the
-browser and run it again:
+rewrites its preferences on exit and would silently undo the change:
 
 ```bash
-use-system-titlebars          # apply
-use-system-titlebars --check  # report only, change nothing
+use-system-titlebars           # hide them
+use-system-titlebars --revert  # hand them back
+use-system-titlebars --check   # report only
 ```
-
-You can also just right-click the tab strip and tick **Use system title bar and
-borders**, which is the same setting.
 
 ## Requirements
 
