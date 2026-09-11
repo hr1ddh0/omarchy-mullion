@@ -7,7 +7,7 @@ button somewhere in its header. This turns the app-drawn ones off:
 
   * Chromium, Chrome, Brave, Edge, Vivaldi: "Use system title bar and
     borders", which drops the close button at the right of the tab strip.
-  * GTK / GNOME apps (Files, Text Editor, and anything with a header bar) --
+  * GTK / GNOME apps (Files, Text Editor, and anything with a header bar):
     the shared button-layout that puts a close button in every header bar.
   * Firefox: the same idea, its own title bar drawing.
 

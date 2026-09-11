@@ -10,45 +10,57 @@ DEST="$HOME/.local/share/hyprland/plugins/hyprbars.so"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+fail() { echo "$1" >&2; exit 1; }
+
+# Local patches. Each is optional: one that no longer applies is skipped with
+# a note rather than failing the build. Looks beside the script first (running
+# from a checkout), then where the installer puts them.
+apply_patches() {
+  local src=$1 patch candidate patches=""
+  for candidate in "$SELF_DIR/../patches" "$HOME/.local/share/mullion/patches"; do
+    if [[ -d $candidate ]]; then patches=$candidate; break; fi
+  done
+  [[ -n $patches ]] || return 0
+  echo "Applying local patches:"
+  for patch in "$patches"/*.py; do
+    [[ -e $patch ]] || continue
+    python3 "$patch" "$src" || true
+  done
+  return 0
+}
+
 HL_COMMIT=$(hyprctl version -j | sed -n 's/.*"commit": *"\([^"]*\)".*/\1/p')
 [[ -n $HL_COMMIT ]] || { echo "Could not read the Hyprland commit from hyprctl."; exit 1; }
 echo "Hyprland commit: $HL_COMMIT"
 
-git clone --quiet --depth 1 https://github.com/hyprwm/hyprland-plugins.git "$WORK/hlp"
-
-# hyprpm.toml pins each Hyprland commit to the plugin commit that builds against it.
-PIN=$(grep -F "$HL_COMMIT" "$WORK/hlp/hyprpm.toml" | grep -oP '(?<=", ")[0-9a-f]{40}' | head -1)
-if [[ -z $PIN ]]; then
-  echo "No pin for this Hyprland commit yet; building from the latest plugin source."
-else
-  echo "Plugin commit:   $PIN"
-  git -C "$WORK/hlp" fetch --quiet --depth 1 origin "$PIN"
-  git -C "$WORK/hlp" checkout --quiet FETCH_HEAD
-fi
-
-# Local patches. Each is optional: a patch that no longer applies is skipped
-# with a note rather than failing the build.
-# Look beside the script first (running from a checkout), then where the
-# installer puts them.
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-for candidate in "$SELF_DIR/../patches" "$HOME/.local/share/mullion/patches"; do
-  if [[ -d $candidate ]]; then PATCHES="$candidate"; break; fi
-done
-
-if [[ -n ${PATCHES:-} && -d $PATCHES ]]; then
-  echo "Applying local patches:"
-  for patch in "$PATCHES"/*.py; do
-    [[ -e $patch ]] || continue
-    python3 "$patch" "$WORK/hlp/hyprbars" || true
-  done
-fi
-
-make -C "$WORK/hlp/hyprbars" all >/dev/null
+# hyprbars comes from hyprwm/hyprland-plugins. Only an exact commit written
+# out below is ever built, never whatever their main branch holds today, so
+# the code compiled on your machine is the code that shipped with this
+# release. hyprpm.toml pairs every Hyprland release with one plugin commit;
+# the pairs Mullion has been built and tested against are listed here. The
+# hash is spelled out in the checkout itself rather than kept in a variable,
+# so the pin is visible exactly where it is enforced.
+case "$HL_COMMIT" in
+  36b2e0cfe0c6094dbc47bd42a437431315bb3087|5c9377c15f85c50648f35ca5a213754f95b93ca0|efb50993780079460b0cbed1363e2166a2de1d9f)
+    echo "Hyprland 0.56: building hyprland-plugins at 7644cec"
+    git clone --quiet --filter=blob:none --no-checkout https://github.com/hyprwm/hyprland-plugins.git "$WORK/hlp" \
+      && git -C "$WORK/hlp" checkout --quiet --detach 7644cecdb947060682891a0db2a0cdc5c0b9e704 \
+      && apply_patches "$WORK/hlp/hyprbars" \
+      && make -C "$WORK/hlp/hyprbars" all >/dev/null \
+      || fail "Building hyprbars failed."
+    ;;
+  *)
+    fail "This Mullion release has no pinned title-bar build for Hyprland $HL_COMMIT.
+Update Mullion with 'omarchy plugin update hriddho.mullion', then run rebuild-hyprbars again."
+    ;;
+esac
 mkdir -p "$(dirname "$DEST")"
 install -m755 "$WORK/hlp/hyprbars/hyprbars.so" "$DEST"
 echo "Installed $DEST"
 
-# A config reload will NOT re-load a plugin that was unloaded mid-session --
+# A config reload will NOT re-load a plugin that was unloaded mid-session;
 # only an explicit `plugin load` does. Relying on the reload alone leaves you
 # with no title bars until the next login.
 hyprctl plugin unload "$DEST" >/dev/null 2>&1 || true

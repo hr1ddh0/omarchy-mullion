@@ -14,6 +14,36 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 command -v hyprctl >/dev/null || die "hyprctl not found."
 command -v g++ >/dev/null || die "g++ not found. Install base-devel."
 
+cat <<'EOF'
+
+Mullion will make these changes, all inside your home directory:
+
+  * build the hyprbars title-bar plugin from hyprwm/hyprland-plugins
+    into ~/.local/share/hyprland/plugins/
+  * install five commands into ~/.local/bin/
+  * write ~/.config/hypr/mullion.lua and add two lines to hyprland.lua
+    (a timestamped backup of hyprland.lua is kept)
+  * add a block to ~/.config/omarchy/themed/hyprland.lua.tpl
+  * create ~/.config/omarchy/mullion.conf if you have none
+  * add the omarchy-minimize plugin for minimised-window chips
+  * hide the close buttons that GTK apps and Chromium-family browsers
+    draw themselves (reversible from the settings panel)
+
+./uninstall.sh reverses all of it.
+
+EOF
+
+if [[ ${1:-} == "--yes" ]]; then
+  echo "Proceeding (--yes)."
+elif [[ -t 0 ]]; then
+  read -r -p "Continue? [y/N] " answer
+  [[ $answer == [yY] || $answer == [yY][eE][sS] ]] || { echo "Nothing was changed."; exit 0; }
+else
+  echo "Not running interactively, so nothing was changed."
+  echo "Run it in a terminal, or pass --yes to agree up front."
+  exit 1
+fi
+
 say "Building the hyprbars title-bar plugin"
 mkdir -p "$HOME/.local/bin"
 install -m755 "$HERE/bin/rebuild-hyprbars" "$HOME/.local/bin/rebuild-hyprbars"

@@ -283,7 +283,10 @@ else
   -- `hyprctl reload` with default-styled bars and no buttons, so trigger the
   -- re-read directly. The marker file rate-limits it to once every 10s, so a
   -- plugin that never exposes its API cannot spin us in a reload loop.
-  local marker = "/tmp/mullion-reload-" .. (os.getenv("USER") or "user")
+  -- Owner-only runtime dir, never /tmp: a predictable name in a world-writable
+  -- directory lets another user plant a symlink and have this write through it.
+  -- Resolved by the shell, because UID is a shell variable, not an environment one.
+  local marker = '"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/mullion-reload"'
   hl.exec_cmd("sh -c 'now=$(date +%s); last=$(cat " .. marker .. " 2>/dev/null || echo 0); "
     .. "if [ $((now - last)) -ge 10 ]; then echo $now > " .. marker
     .. "; sleep 1; hyprctl reload; fi'")

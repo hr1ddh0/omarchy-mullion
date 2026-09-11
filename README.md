@@ -63,12 +63,12 @@ when you add the plugin: `omarchy plugin add` only clones files. Everything
 below runs when **you** click the setup icon or run `./install.sh`, in a visible
 terminal.
 
-**It never uses sudo and never asks for a password.** Everything lands in your
+**No sudo or pkexec is required, and it never asks for a password.** Everything lands in your
 own home directory.
 
 | What | Where | Why |
 | --- | --- | --- |
-| Builds **hyprbars** from source | `~/.local/share/hyprland/plugins/hyprbars.so` | Hyprland draws no title bars; this is the only way to get them. Cloned from [hyprwm/hyprland-plugins](https://github.com/hyprwm/hyprland-plugins) at the commit `hyprpm.toml` pins to *your* Hyprland, then compiled locally. |
+| Builds **hyprbars** from source | `~/.local/share/hyprland/plugins/hyprbars.so` | Hyprland draws no title bars; this is the only way to get them. Cloned from [hyprwm/hyprland-plugins](https://github.com/hyprwm/hyprland-plugins) at an exact commit pinned in `rebuild-hyprbars` for your Hyprland version, then compiled locally. Nothing unpinned is ever built. |
 | Applies 4 local patches to that source | build directory only | Centres the button glyphs, gives them room, mirrors one, and hooks title-bar drags. Each is skipped with a note if upstream changes, so a Hyprland update can never leave you unable to log in. |
 | Five commands | `~/.local/bin/` | `mullion-set`, `mullion-snap`, `mullion-drag-snap`, `rebuild-hyprbars`, `use-system-titlebars` |
 | One Hyprland config file | `~/.config/hypr/mullion.lua` | The window rules, bindings and title-bar setup |
@@ -153,13 +153,20 @@ use-system-titlebars --check   # report only
 ## After a Hyprland update
 
 Hyprland plugins are compiled against one exact Hyprland build, so an update
-that bumps Hyprland makes the title bars stop appearing. Nothing else breaks
-and login is never blocked. Get them back with:
+that bumps Hyprland makes the title bars stop appearing. Nothing else breaks and
+login is never blocked; the bar icon switches to its rebuild state.
+
+Each Mullion release pins the exact hyprland-plugins commit that pairs with the
+Hyprland versions it supports (currently 0.56.0 to 0.56.2), and never builds
+anything else. So after a Hyprland update:
 
 ```bash
+omarchy plugin update hriddho.mullion   # picks up the pin for the new Hyprland
 rebuild-hyprbars
 ```
 
+If this release has no pin for your Hyprland yet, `rebuild-hyprbars` says so
+and stops rather than building unreviewed code.
 ## A note on `hyprctl dispatch`
 
 Omarchy configures Hyprland in Lua, so `hyprctl dispatch` takes a Lua
