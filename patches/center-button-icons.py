@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Centre hyprbars' button glyphs on their dots.
 
 hyprbars draws the coloured circle into a box it rounds to whole pixels, but
@@ -43,8 +43,12 @@ def main():
         print("  already patched")
         return 0
     if OLD not in src:
-        print("  upstream code changed; skipping the icon-centring patch")
-        return 0        # never fail the build over a cosmetic patch
+        # The source is pinned to an exact commit, so this text is either
+        # present or the tree is not what this release was built against.
+        # Skipping used to be the lenient choice; with a pin it would mean
+        # compiling something nobody reviewed, so it fails the build instead.
+        print("  ERROR: barDeco.cpp does not match the pinned commit")
+        return 1
     open(path, "w").write(src.replace(OLD, NEW, 1))
     print("  centred button glyphs")
     return 0

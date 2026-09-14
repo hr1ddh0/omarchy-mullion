@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Drive drag-to-edge snapping from hyprbars' own title-bar drags.
 
 hyprbars listens to pointer events itself and moves the window when you drag
@@ -48,8 +48,8 @@ def main():
     try:
         src = open(path).read()
     except OSError:
-        print("  barDeco.cpp missing; skipping the drag-hook patch")
-        return 0
+        print("  ERROR: barDeco.cpp is missing from the pinned checkout")
+        return 1
 
     if all(new in src for _, _, new in EDITS):
         print("  already patched")
@@ -59,8 +59,12 @@ def main():
         if new in src:
             continue
         if old not in src:
-            print("  upstream drag handling changed; skipping the drag-hook patch")
-            return 0
+            # Unlike the cosmetic patches this one carries behaviour, so a
+            # silent skip would ship a build whose title-bar drags quietly do
+            # not snap. Pinned source means it should never happen; if it
+            # does, the tree is wrong and the build stops.
+            print("  ERROR: barDeco.cpp does not match the pinned commit")
+            return 1
         src = src.replace(old, new, 1)
 
     open(path, "w").write(src)

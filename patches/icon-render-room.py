@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Give hyprbars' button glyphs room to render.
 
 Two upstream choices make the marks hard to read at a macOS-sized 12px dot:
@@ -29,8 +29,10 @@ def main():
         print("  already patched")
         return 0
     if OLD not in src:
-        print("  upstream icon rendering changed; skipping the render-room patch")
-        return 0
+        # Pinned source: a mismatch means the tree is not what was reviewed,
+        # so the build stops rather than compiling it. See SOURCES.sha256.
+        print("  ERROR: barDeco.cpp does not match the pinned commit")
+        return 1
     open(path, "w").write(src.replace(OLD, NEW, 1))
     print("  gave button glyphs render room (0.62 -> 0.72, wider layout)")
     return 0

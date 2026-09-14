@@ -286,10 +286,13 @@ else
   -- Owner-only runtime dir, never /tmp: a predictable name in a world-writable
   -- directory lets another user plant a symlink and have this write through it.
   -- Resolved by the shell, because UID is a shell variable, not an environment one.
-  local marker = '"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/mullion-reload"'
-  hl.exec_cmd("sh -c 'now=$(date +%s); last=$(cat " .. marker .. " 2>/dev/null || echo 0); "
+  -- Every command here is named by absolute path: this string is handed to a
+  -- shell whose PATH comes from the compositor's environment, not from us.
+  local marker = '"${XDG_RUNTIME_DIR:-/run/user/$(/usr/bin/id -u)}/mullion-reload"'
+  hl.exec_cmd("/usr/bin/sh -c 'now=$(/usr/bin/date +%s); "
+    .. "last=$(/usr/bin/cat " .. marker .. " 2>/dev/null || echo 0); "
     .. "if [ $((now - last)) -ge 10 ]; then echo $now > " .. marker
-    .. "; sleep 1; hyprctl reload; fi'")
+    .. "; /usr/bin/sleep 1; /usr/bin/hyprctl reload; fi'")
 end
 
 -- ---------------------------------------------------------------------------
@@ -309,10 +312,15 @@ hl.unbind("SUPER + RIGHT")
 hl.unbind("SUPER + UP")
 hl.unbind("SUPER + DOWN")
 
-o.bind("SUPER + LEFT", "Snap window left / quarter", "mullion-snap left")
-o.bind("SUPER + RIGHT", "Snap window right / quarter", "mullion-snap right")
-o.bind("SUPER + UP", "Snap window up / quarter", "mullion-snap top")
-o.bind("SUPER + DOWN", "Snap window down / quarter", "mullion-snap bottom")
+-- Bound by absolute path rather than by name. These run from the compositor,
+-- whose PATH we do not control, so leaving the name to be resolved there would
+-- let any writable directory ahead of ~/.local/bin decide what they mean.
+local BIN = os.getenv("HOME") .. "/.local/bin/"
+
+o.bind("SUPER + LEFT", "Snap window left / quarter", BIN .. "mullion-snap left")
+o.bind("SUPER + RIGHT", "Snap window right / quarter", BIN .. "mullion-snap right")
+o.bind("SUPER + UP", "Snap window up / quarter", BIN .. "mullion-snap top")
+o.bind("SUPER + DOWN", "Snap window down / quarter", BIN .. "mullion-snap bottom")
 
 -- Arrows compose, exactly like Windows Snap: LEFT then UP puts the window in
 -- the top-left quarter, so four apps tile a workspace with two presses each.
@@ -334,8 +342,8 @@ o.bind("SUPER + DOWN", "Snap window down / quarter", "mullion-snap bottom")
 -- binds are non-consuming, so Omarchy's own "Move window" binding still runs
 -- and the drag itself behaves exactly as before; if this is removed, nothing
 -- about dragging changes.
-o.bind("SUPER + mouse:272", "Begin drag-snap", "mullion-drag-snap start", { non_consuming = true })
-o.bind("SUPER + mouse:272", "Finish drag-snap", "mullion-drag-snap end", { non_consuming = true, release = true })
+o.bind("SUPER + mouse:272", "Begin drag-snap", BIN .. "mullion-drag-snap start", { non_consuming = true })
+o.bind("SUPER + mouse:272", "Finish drag-snap", BIN .. "mullion-drag-snap end", { non_consuming = true, release = true })
 
 -- ---------------------------------------------------------------------------
 -- Mac muscle memory. SUPER stands in for Command.

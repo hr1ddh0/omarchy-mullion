@@ -1,3 +1,4 @@
 *.bak.*
 assets/*.xcf
 bin/__pycache__
+patches/__pycache__

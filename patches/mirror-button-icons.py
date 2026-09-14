@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Let a hyprbars button mirror its glyph horizontally.
 
 macOS's green button shows two arrows on the NW-SE diagonal. Nerd Font's
@@ -72,13 +72,15 @@ def main():
         try:
             src = open(path).read()
         except OSError:
-            print("  %s missing; skipping the mirror patch" % filename)
-            return 0
+            print("  ERROR: %s is missing from the pinned checkout" % filename)
+            return 1
         if new in src:
             continue                      # already applied
         if old not in src:
-            print("  upstream %s changed; skipping the mirror patch" % filename)
-            return 0                      # never fail the build over a glyph
+            # Pinned source: a mismatch means the tree is not what was
+            # reviewed, so the build stops. See SOURCES.sha256.
+            print("  ERROR: %s does not match the pinned commit" % filename)
+            return 1
         staged.append((path, src.replace(old, new, 1)))
 
     # Only write once every edit is known to apply, so a partial patch can

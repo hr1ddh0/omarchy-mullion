@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Drag a window to a screen edge to snap it there, with a live preview.
 
     mullion-drag-snap start   # bound to SUPER + left-mouse press
@@ -11,56 +11,77 @@ would land in. On release, the window is snapped to that region.
 Hyprland has no drag events, so the button bindings mark the drag and the
 cursor is polled over Hyprland's command socket, about 0.03 ms per read, so
 following it at 60 Hz costs nothing, and only for as long as the button is down.
+
+This runs from Hyprland's exec and from inside hyprbars, so it inherits an
+environment it does not control: every executable is resolved from a root-owned
+system directory, XDG_RUNTIME_DIR is checked before any path is built from it,
+and the three runtime files are opened without following links.
 """
+import importlib.util
 import json
 import os
 import socket
-import shutil
 import subprocess
 import sys
 import time
 
+
+def _load_lib():
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (os.path.join(here, "mullionlib.py"),
+                      os.path.expanduser("~/.local/share/mullion/lib/mullionlib.py")):
+        if os.path.isfile(candidate):
+            spec = importlib.util.spec_from_file_location("mullionlib", candidate)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+    sys.exit("mullion-drag-snap: mullionlib.py not found; reinstall Mullion")
+
+
+mfs = _load_lib()
 HERE = os.path.dirname(os.path.abspath(__file__))
-RUNTIME = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
-STATE = os.path.join(RUNTIME, "mullion-drag.json")
+
+# Checked rather than taken as given: everything below is a path built from it.
+# A relative or traversing value, or a directory somebody else owns, is refused
+# outright instead of quietly becoming somewhere we did not mean to write.
+try:
+    RUNTIME = mfs.require_env_dir("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+except mfs.MullionError as exc:
+    sys.exit("mullion-drag-snap: %s" % exc)
+
+STATE_NAME = "mullion-drag.json"
 # Holds the running watcher's pid. SUPER+dragging a title bar fires both the
 # Hyprland binding and hyprbars' own hook, so "start" can arrive twice for one
 # drag; without this each would get its own watcher, doubling the IPC and
 # letting the two fight over the preview.
-LOCK = os.path.join(RUNTIME, "mullion-drag.pid")
+LOCK_NAME = "mullion-drag.pid"
 # Overwritten at the start of each drag, so it never grows. Read it with
 # `cat $XDG_RUNTIME_DIR/mullion-drag.log` if snapping ever misbehaves.
-LOG = os.path.join(RUNTIME, "mullion-drag.log")
+LOG_NAME = "mullion-drag.log"
+STATE = os.path.join(RUNTIME, STATE_NAME)
+
+
+def runtime_dir():
+    """A fresh descriptor for the runtime directory, verified on every open."""
+    return mfs.owned_dir(RUNTIME)
 
 
 def log(message, reset=False):
     try:
-        with open(LOG, "w" if reset else "a") as handle:
-            handle.write(message + "\n")
-    except OSError:
+        fd = runtime_dir()
+        try:
+            previous = "" if reset else (mfs.read_text_at(fd, LOG_NAME, missing_ok=True) or "")
+            mfs.write_atomic(fd, LOG_NAME, previous + message + "\n", mode=0o600)
+        finally:
+            os.close(fd)
+    except Exception:
         pass
 
 
-def shell_tool(name):
-    """Resolve a helper by absolute path.
-
-    These run from Hyprland's exec, whose PATH we do not control, so fall back
-    to the known install locations rather than trusting the environment.
-    """
-    found = shutil.which(name)
-    if found:
-        return found
-    for base in ("/usr/share/omarchy/bin", "/usr/bin", "/usr/local/bin",
-                 os.path.expanduser("~/.local/bin")):
-        candidate = os.path.join(base, name)
-        if os.path.exists(candidate):
-            return candidate
-    return name
-
-def settings(path=None):
+def settings():
     """Read ~/.config/omarchy/mullion.conf. Missing keys use the defaults."""
     values = {"drag_snap": True, "snap_edge": 10, "snap_corner": 140}
-    path = path or os.path.expanduser("~/.config/omarchy/mullion.conf")
+    path = os.path.expanduser("~/.config/omarchy/mullion.conf")
     try:
         for line in open(path):
             line = line.strip()
@@ -81,9 +102,10 @@ def settings(path=None):
 
 SETTINGS = settings()
 # How close to an edge counts as "on" it, and how far along an edge still
-# counts as its corner.
-EDGE = int(SETTINGS.get("snap_edge", 10))
-CORNER_SPAN = int(SETTINGS.get("snap_corner", 140))
+# counts as its corner. Clamped, because these come out of a file the user
+# edits and a wild value would make every drag snap or none at all.
+EDGE = max(1, min(200, int(SETTINGS.get("snap_edge", 10) or 10)))
+CORNER_SPAN = max(1, min(600, int(SETTINGS.get("snap_corner", 140) or 140)))
 # Ignore a drag that never really moved, so a plain SUPER+click near an edge
 # does not rearrange anything.
 MIN_TRAVEL = 24
@@ -97,9 +119,11 @@ MAX_DRAG_SECONDS = 120
 
 def hypr(request):
     """Talk to Hyprland's command socket directly; far cheaper than hyprctl."""
-    sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
-    runtime = os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
-    path = f"{runtime}/hypr/{sig}/.socket.sock"
+    sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") or ""
+    # Part of a filesystem path, so it may only be a plain name.
+    if not sig or "/" in sig or sig in (".", ".."):
+        raise OSError("HYPRLAND_INSTANCE_SIGNATURE is not usable")
+    path = os.path.join(RUNTIME, "hypr", sig, ".socket.sock")
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
         sock.connect(path)
         sock.sendall(request.encode())
@@ -174,6 +198,14 @@ def region_at(mons, x, y):
     return None
 
 
+def snap_path():
+    """Where mullion-snap lives: beside us, or in the install location."""
+    local = os.path.join(HERE, "mullion-snap")
+    if os.path.isfile(local):
+        return local
+    return mfs.helper("mullion-snap")
+
+
 def snap_module():
     """Import mullion-snap so its geometry runs in-process.
 
@@ -182,12 +214,10 @@ def snap_module():
     instant. Importing it keeps one source of truth for the geometry while
     making a zone change pure arithmetic.
     """
-    import importlib.util
     from importlib.machinery import SourceFileLoader
 
-    path = os.path.join(HERE, "mullion-snap")
-    loader = SourceFileLoader("macos_snap", path)
-    spec = importlib.util.spec_from_loader("macos_snap", loader)
+    loader = SourceFileLoader("mullion_snap", snap_path())
+    spec = importlib.util.spec_from_loader("mullion_snap", loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
     return module
@@ -207,12 +237,18 @@ def overlay(method, payload=None, wait=False):
     Fire-and-forget by default: the reply is of no use mid-drag, and waiting on
     it stalled the cursor loop for ~21ms every time the region changed.
     """
-    args = [shell_tool("omarchy-shell"), "-q", "mullion-preview", method]
+    try:
+        args = [mfs.tool("omarchy-shell"), "-q", "mullion-preview", method]
+    except mfs.MullionError as exc:
+        log("overlay %s unavailable: %s" % (method, exc))
+        return
     if payload is not None:
         args.append(json.dumps(payload))
     # omarchy-shell needs OMARCHY_PATH, and this runs from Hyprland's exec
-    # where we cannot count on the session environment carrying it.
+    # where we cannot count on the session environment carrying it. PATH is
+    # replaced rather than inherited for the same reason.
     env = dict(os.environ)
+    env["PATH"] = mfs.SAFE_PATH
     env.setdefault("OMARCHY_PATH", "/usr/share/omarchy")
     try:
         proc = subprocess.Popen(args, stdout=subprocess.DEVNULL,
@@ -284,8 +320,18 @@ def watch():
 def watcher_running():
     """Is a watcher from this drag still alive?"""
     try:
-        pid = int(open(LOCK).read().strip())
-    except (OSError, ValueError):
+        fd = runtime_dir()
+    except mfs.MullionError:
+        return False
+    try:
+        raw = mfs.read_text_at(fd, LOCK_NAME, missing_ok=True)
+    except mfs.MullionError:
+        return False
+    finally:
+        os.close(fd)
+    try:
+        pid = int((raw or "").strip())
+    except ValueError:
         return False
     try:
         os.kill(pid, 0)          # signal 0 only tests for existence
@@ -304,8 +350,14 @@ def start():
     log("drag start at %s" % (pos,), reset=True)
     if not pos:
         return
-    with open(STATE, "w") as handle:
-        json.dump({"x": pos[0], "y": pos[1], "t": time.time()}, handle)
+
+    fd = runtime_dir()
+    try:
+        mfs.write_atomic(fd, STATE_NAME,
+                         json.dumps({"x": pos[0], "y": pos[1], "t": time.time()}),
+                         mode=0o600)
+    finally:
+        os.close(fd)
 
     # Detach so the key binding returns immediately and the native window drag
     # is not held up behind us.
@@ -313,13 +365,20 @@ def start():
         return
     os.setsid()
     try:
-        with open(LOCK, "w") as handle:
-            handle.write(str(os.getpid()))
+        fd = runtime_dir()
+        try:
+            mfs.write_atomic(fd, LOCK_NAME, str(os.getpid()), mode=0o600)
+        finally:
+            os.close(fd)
         watch()
     finally:
         try:
-            os.remove(LOCK)
-        except OSError:
+            fd = runtime_dir()
+            try:
+                mfs.remove_at(fd, LOCK_NAME)
+            finally:
+                os.close(fd)
+        except Exception:
             pass
         os._exit(0)
 
@@ -327,22 +386,24 @@ def start():
 def end():
     if not SETTINGS.get("drag_snap", True):
         return
+    began = None
+    fd = runtime_dir()
     try:
-        with open(STATE) as handle:
-            began = json.load(handle)
-        # A drag that never ended (a crash, a missed release) leaves this
-        # behind. Measuring travel from an hour-old position would snap a
-        # window the user only just clicked.
-        if time.time() - float(began.get("t", 0)) > MAX_DRAG_SECONDS:
-            log("ignoring a stale drag record")
-            began = None
-    except (OSError, ValueError, TypeError):
+        raw = mfs.read_text_at(fd, STATE_NAME, missing_ok=True)
+        if raw:
+            began = json.loads(raw)
+            # A drag that never ended (a crash, a missed release) leaves this
+            # behind. Measuring travel from an hour-old position would snap a
+            # window the user only just clicked.
+            if time.time() - float(began.get("t", 0)) > MAX_DRAG_SECONDS:
+                log("ignoring a stale drag record")
+                began = None
+        # Removing the state file is what tells the watcher to stop.
+        mfs.remove_at(fd, STATE_NAME)
+    except (mfs.MullionError, ValueError, TypeError):
         began = None
-    # Removing the state file is what tells the watcher to stop.
-    try:
-        os.remove(STATE)
-    except OSError:
-        pass
+    finally:
+        os.close(fd)
     overlay("hide")
 
     if not began:
@@ -363,22 +424,9 @@ def end():
         # belongs to the arrow keys, where a second direction refines the
         # first; applying it here would turn a drag to the left edge into a
         # quarter whenever the window happened to be half-height already.
-        subprocess.run([os.path.join(HERE, "mullion-snap"), "--exact", region],
-                       capture_output=True, text=True)
+        mfs.run([snap_path(), "--exact", region])
     else:
         keep_below_bar(mons)
-
-
-def titlebar_height():
-    try:
-        out = subprocess.run(["hyprctl", "getoption", "plugin:hyprbars:bar_height"],
-                             capture_output=True, text=True, timeout=2)
-        for line in out.stdout.splitlines():
-            if line.strip().startswith("int:"):
-                return max(0, int(line.split(":", 1)[1].strip()))
-    except Exception:
-        pass
-    return 0
 
 
 def keep_below_bar(mons):
@@ -396,17 +444,20 @@ def keep_below_bar(mons):
     at = window.get("at")
     if not address or not at or not window.get("floating"):
         return
+    try:
+        # Spliced into a Lua expression below, so it is checked first.
+        address = mfs.require_window_address(address)
+    except mfs.MullionError:
+        return
 
     mon = monitor_at(mons, at[0], at[1])
     reserved_top = (mon.get("reserved") or [0, 0, 0, 0])[1]
     lowest = mon["y"] + reserved_top + titlebar_height()
 
     if at[1] < lowest:
-        subprocess.run(
-            ["hyprctl", "dispatch",
-             'hl.dsp.window.move({ window = "address:%s", x = %d, y = %d })'
-             % (address, at[0], lowest)],
-            capture_output=True, text=True)
+        mfs.run([mfs.tool("hyprctl"), "dispatch",
+                 'hl.dsp.window.move({ window = "address:%s", x = %d, y = %d })'
+                 % (address, at[0], lowest)])
 
 
 if __name__ == "__main__":

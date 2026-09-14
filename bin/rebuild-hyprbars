@@ -4,75 +4,237 @@
 # Hyprland plugins are tied to the exact Hyprland build they were compiled
 # against, so run this after an `omarchy update` that bumps Hyprland. Until you
 # do, title bars simply won't appear; nothing else breaks.
+#
+# What this will and will not build
+# ---------------------------------
+# Only an exact, published upstream commit is ever compiled, and only after its
+# contents have been checked digit for digit:
+#
+#   1. the Hyprland you are running selects one pinned hyprland-plugins commit
+#      from the table below, or the build stops;
+#   2. that commit must be the commit an upstream release tag points at, so the
+#      pin is anchored to a published release rather than a bare hash;
+#   3. every source file is checked against patches/SOURCES.sha256 before any
+#      local patch runs, and again after, so what reaches the compiler is
+#      exactly what this release was reviewed against;
+#   4. all four patches must apply. A patch that no longer matches means the
+#      tree is not what we think it is, and the build stops;
+#   5. the compiler runs in a cleared environment with a fixed search path, so
+#      nothing inherited can redirect the toolchain, its headers or its flags;
+#   6. the result is installed atomically and its digest recorded in
+#      ~/.local/share/mullion/build-record.json.
+#
+# Failing any of these leaves the previously built plugin in place, untouched.
 set -euo pipefail
 
-DEST="$HOME/.local/share/hyprland/plugins/hyprbars.so"
+# Trust root. This script was started through an absolute shebang, so /usr/bin
+# is already trusted by virtue of running at all; everything else is resolved
+# from there rather than from an inherited PATH.
+export PATH=/usr/bin:/usr/local/bin:/usr/sbin
+unset LD_PRELOAD LD_LIBRARY_PATH CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH \
+      PKG_CONFIG_PATH PKG_CONFIG_LIBDIR CXXFLAGS LDFLAGS BASH_ENV ENV IFS 2>/dev/null || true
+
+say() { printf '\n\033[1;36m==>\033[0m %s\n' "$1"; }
+fail() { printf '\033[1;31mError:\033[0m %s\n' "$1" >&2; exit 1; }
+
+# Resolve an executable to an absolute path in a root-owned system directory.
+# Bare names would otherwise mean whatever an inherited PATH says, and this
+# script runs from a bar widget and a terminal whose environments we do not own.
+tool() {
+  local name=$1 dir path owner mode
+  for dir in /usr/bin /usr/local/bin /usr/sbin /usr/local/sbin; do
+    path="$dir/$name"
+    [[ -f $path && -x $path ]] || continue
+    read -r owner mode < <(/usr/bin/stat -Lc '%u %a' "$path" 2>/dev/null) || continue
+    [[ $owner == 0 ]] || continue
+    (( (8#$mode & 8#022) == 0 )) || continue
+    printf '%s\n' "$path"
+    return 0
+  done
+  fail "$name was not found in a trusted system directory (/usr/bin, /usr/local/bin, /usr/sbin)."
+}
+
+GIT=$(tool git)
+MAKE=$(tool make)
+CXX=$(tool g++)
+HYPRCTL=$(tool hyprctl)
+PYTHON=$(tool python3)
+PKGCONFIG=$(tool pkg-config)
+
+DEST_DIR="$HOME/.local/share/hyprland/plugins"
+DEST="$DEST_DIR/hyprbars.so"
+STATE_DIR="$HOME/.local/share/mullion"
+RECORD="$STATE_DIR/build-record.json"
+
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-fail() { echo "$1" >&2; exit 1; }
+# The patch set and its digest manifest travel together: beside this script
+# when run from a checkout, or where install.sh put them.
+PATCHES=""
+for candidate in "$SELF_DIR/../patches" "$STATE_DIR/patches"; do
+  if [[ -f $candidate/SOURCES.sha256 && -f $candidate/verify-pins ]]; then
+    PATCHES=$(cd "$candidate" && pwd)
+    break
+  fi
+done
+[[ -n $PATCHES ]] || fail "Mullion's patches and digest manifest are missing. Reinstall Mullion."
 
-# Local patches. Each is optional: one that no longer applies is skipped with
-# a note rather than failing the build. Looks beside the script first (running
-# from a checkout), then where the installer puts them.
-apply_patches() {
-  local src=$1 patch candidate patches=""
-  for candidate in "$SELF_DIR/../patches" "$HOME/.local/share/mullion/patches"; do
-    if [[ -d $candidate ]]; then patches=$candidate; break; fi
-  done
-  [[ -n $patches ]] || return 0
-  echo "Applying local patches:"
-  for patch in "$patches"/*.py; do
-    [[ -e $patch ]] || continue
-    python3 "$patch" "$src" || true
-  done
-  return 0
-}
+LIB=""
+for candidate in "$SELF_DIR/mullionlib.py" "$STATE_DIR/lib/mullionlib.py"; do
+  [[ -f $candidate ]] && { LIB=$candidate; break; }
+done
+[[ -n $LIB ]] || fail "mullionlib.py is missing. Reinstall Mullion."
 
-HL_COMMIT=$(hyprctl version -j | sed -n 's/.*"commit": *"\([^"]*\)".*/\1/p')
-[[ -n $HL_COMMIT ]] || { echo "Could not read the Hyprland commit from hyprctl."; exit 1; }
+# ---------------------------------------------------------------------------
+# 1. Which upstream commit pairs with the Hyprland you are running.
+HL_COMMIT=$("$HYPRCTL" version -j | "$PYTHON" -c 'import json,sys; print(json.load(sys.stdin)["commit"])')
+[[ $HL_COMMIT =~ ^[0-9a-f]{40}$ ]] || fail "Could not read a valid Hyprland commit from hyprctl."
 echo "Hyprland commit: $HL_COMMIT"
 
-# hyprbars comes from hyprwm/hyprland-plugins. Only an exact commit written
-# out below is ever built, never whatever their main branch holds today, so
-# the code compiled on your machine is the code that shipped with this
-# release. hyprpm.toml pairs every Hyprland release with one plugin commit;
-# the pairs Mullion has been built and tested against are listed here. The
-# hash is spelled out in the checkout itself rather than kept in a variable,
-# so the pin is visible exactly where it is enforced.
+# hyprpm.toml upstream pairs every Hyprland release with one plugin commit.
+# The pairs Mullion has actually been built and reviewed against are listed
+# here; anything else is refused rather than guessed at.
 case "$HL_COMMIT" in
-  36b2e0cfe0c6094dbc47bd42a437431315bb3087|5c9377c15f85c50648f35ca5a213754f95b93ca0|efb50993780079460b0cbed1363e2166a2de1d9f)
-    echo "Hyprland 0.56: building hyprland-plugins at 7644cec"
-    git clone --quiet --filter=blob:none --no-checkout https://github.com/hyprwm/hyprland-plugins.git "$WORK/hlp" \
-      && git -C "$WORK/hlp" checkout --quiet --detach 7644cecdb947060682891a0db2a0cdc5c0b9e704 \
-      && apply_patches "$WORK/hlp/hyprbars" \
-      && make -C "$WORK/hlp/hyprbars" all >/dev/null \
-      || fail "Building hyprbars failed."
+  # Hyprland 0.56.0, 0.56.1, 0.56.2
+  36b2e0cfe0c6094dbc47bd42a437431315bb3087|\
+  5c9377c15f85c50648f35ca5a213754f95b93ca0|\
+  efb50993780079460b0cbed1363e2166a2de1d9f)
+    PLUGINS_COMMIT=7644cecdb947060682891a0db2a0cdc5c0b9e704
+    PLUGINS_TAG=v0.56.0
     ;;
   *)
     fail "This Mullion release has no pinned title-bar build for Hyprland $HL_COMMIT.
-Update Mullion with 'omarchy plugin update hriddho.mullion', then run rebuild-hyprbars again."
+Update Mullion with 'omarchy plugin update hriddho.mullion', then run rebuild-hyprbars again.
+Nothing was built, and your existing title bars are untouched."
     ;;
 esac
-mkdir -p "$(dirname "$DEST")"
-install -m755 "$WORK/hlp/hyprbars/hyprbars.so" "$DEST"
-echo "Installed $DEST"
 
+# ---------------------------------------------------------------------------
+# 2. Fetch exactly that commit, and prove it is what we asked for.
+say "Fetching hyprland-plugins at $PLUGINS_TAG ($PLUGINS_COMMIT)"
+TREE="$WORK/hlp"
+# fsckobjects makes git validate every object it receives rather than trusting
+# the sending side's framing.
+"$GIT" -c transfer.fsckobjects=true -c fetch.fsckobjects=true \
+  clone --quiet --filter=blob:none --no-checkout \
+  -- https://github.com/hyprwm/hyprland-plugins.git "$TREE" \
+  || fail "Could not fetch hyprland-plugins."
+"$GIT" -C "$TREE" checkout --quiet --detach "$PLUGINS_COMMIT" \
+  || fail "The pinned commit $PLUGINS_COMMIT is not in that repository."
+
+GOT=$("$GIT" -C "$TREE" rev-parse HEAD)
+[[ $GOT == "$PLUGINS_COMMIT" ]] \
+  || fail "Checked out $GOT but expected $PLUGINS_COMMIT."
+
+# Review linkage: the pin has to be what an upstream release tag points at, so
+# it is traceable to a published release and not just a hash someone typed.
+TAGGED=$("$GIT" -C "$TREE" rev-parse --verify --quiet "refs/tags/$PLUGINS_TAG^{commit}") \
+  || fail "Upstream tag $PLUGINS_TAG is missing; refusing to build an unanchored commit."
+[[ $TAGGED == "$PLUGINS_COMMIT" ]] \
+  || fail "Upstream tag $PLUGINS_TAG points at $TAGGED, not the pinned $PLUGINS_COMMIT.
+Refusing to build: the pin and the published release disagree."
+echo "  $PLUGINS_TAG resolves to the pinned commit"
+
+SRC="$TREE/hyprbars"
+[[ -d $SRC ]] || fail "The pinned checkout has no hyprbars directory."
+
+# ---------------------------------------------------------------------------
+# 3. The fetched source must match the digests recorded for this pin.
+say "Verifying build inputs"
+"$PYTHON" "$PATCHES/verify-pins" check pre "$PLUGINS_COMMIT" "$SRC" || exit 1
+
+# ---------------------------------------------------------------------------
+# 4. Apply every patch. All four must succeed.
+say "Applying Mullion's patches"
+for patch in center-button-icons drag-snap-hooks icon-render-room mirror-button-icons; do
+  [[ -f $PATCHES/$patch.py ]] || fail "$patch.py is missing. Reinstall Mullion."
+  printf '  %s:\n' "$patch"
+  "$PYTHON" "$PATCHES/$patch.py" "$SRC" \
+    || fail "$patch.py did not apply to the pinned source.
+Nothing was built, and your existing title bars are untouched."
+done
+
+# And the patched result must match too, so the source handed to the compiler
+# is byte-for-byte the source this release was reviewed with.
+"$PYTHON" "$PATCHES/verify-pins" check post "$PLUGINS_COMMIT" "$SRC" || exit 1
+
+# ---------------------------------------------------------------------------
+# 5. Compile, in an environment we control rather than the one we inherited.
+say "Compiling against your Hyprland"
+CXX_VERSION=$("$CXX" --version | head -1)
+HYPRLAND_PC=$("$PKGCONFIG" --modversion hyprland 2>/dev/null || echo "unknown")
+echo "  $CXX_VERSION"
+echo "  hyprland headers: $HYPRLAND_PC"
+
+# env -i drops everything, then only what the build genuinely needs is put
+# back. This is what keeps an inherited CXXFLAGS, LD_PRELOAD or PKG_CONFIG_PATH
+# from reaching into the compile.
+/usr/bin/env -i \
+  PATH=/usr/bin:/usr/local/bin \
+  HOME="$HOME" \
+  LANG=C \
+  CXX="$CXX" \
+  "$MAKE" -C "$SRC" CXX="$CXX" all >/dev/null \
+  || fail "Building hyprbars failed. Your existing title bars are untouched."
+
+BUILT="$SRC/hyprbars.so"
+[[ -f $BUILT ]] || fail "The build reported success but produced no hyprbars.so."
+
+# ---------------------------------------------------------------------------
+# 6. Install atomically, and record exactly what was built.
+SO_SHA=$("$PYTHON" "$LIB" sha256 "$BUILT")
+"$PYTHON" "$LIB" install-file "$BUILT" "$DEST_DIR" hyprbars.so 755
+echo "Installed $DEST"
+echo "  sha256: $SO_SHA"
+
+# A compiled Hyprland plugin cannot ship with a publisher's digest, because it
+# is compiled here against this machine's Hyprland. This record is the next
+# best thing: every input that determined the artifact, written down beside it.
+"$PYTHON" - "$RECORD" <<PY
+import json, os, sys, time
+record = {
+    "built_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    "hyprland_commit": "$HL_COMMIT",
+    "plugins_commit": "$PLUGINS_COMMIT",
+    "plugins_tag": "$PLUGINS_TAG",
+    "sources_verified": "patches/SOURCES.sha256 (pre and post patch)",
+    "patches": ["center-button-icons", "drag-snap-hooks",
+                "icon-render-room", "mirror-button-icons"],
+    "compiler": """$CXX_VERSION""",
+    "hyprland_headers": "$HYPRLAND_PC",
+    "artifact": "$DEST",
+    "artifact_sha256": "$SO_SHA",
+}
+path = sys.argv[1]
+os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+tmp = path + ".tmp"
+with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "w") as h:
+    json.dump(record, h, indent=2)
+    h.write("\n")
+os.replace(tmp, path)
+PY
+echo "  recorded in $RECORD"
+
+# ---------------------------------------------------------------------------
+# 7. Load it.
+#
 # A config reload will NOT re-load a plugin that was unloaded mid-session;
 # only an explicit `plugin load` does. Relying on the reload alone leaves you
 # with no title bars until the next login.
-hyprctl plugin unload "$DEST" >/dev/null 2>&1 || true
+say "Loading the plugin"
+"$HYPRCTL" plugin unload "$DEST" >/dev/null 2>&1 || true
 sleep 1
-hyprctl plugin load "$DEST" >/dev/null 2>&1 || true
+"$HYPRCTL" plugin load "$DEST" >/dev/null 2>&1 || true
 sleep 1
 # Now reload the config so the plugin's Lua API is visible and the buttons
 # register against it.
-hyprctl reload >/dev/null 2>&1 || true
+"$HYPRCTL" reload >/dev/null 2>&1 || true
 sleep 1
 
-if hyprctl plugin list 2>/dev/null | grep -q hyprbars; then
+if "$HYPRCTL" plugin list 2>/dev/null | grep -q hyprbars; then
   echo "Reloaded. Title bars are back."
 else
   echo "The plugin did not load. Log out and back in, or check: hyprctl plugin list"

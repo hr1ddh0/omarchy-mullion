@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "hriddho.mullion",
   "name": "Mullion",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Ashikuzzaman Hriddho",
   "license": "MIT",
   "description": "macOS traffic lights or Windows 11 caption buttons for every window, with drag-to-edge snapping, split screen, edge resize and minimize to the bar.",

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Change Mullion settings and apply them.
 
     mullion-set rounding=14 shadow=false
@@ -9,14 +9,37 @@ Writes ~/.config/omarchy/mullion.conf, preserving its comments and ordering,
 then applies whatever the changed keys affect: a Hyprland reload for anything
 the window config reads, and the window-button sweep when that setting moves.
 The settings panel drives this, so the panel and the command line cannot drift.
+
+Every key and value is checked against the schema in mullionlib before it can
+reach the file. The panel, a keybinding and a terminal all arrive here, so this
+is the one place that decides what is allowed to be written; a name that is not
+a setting, a number out of range, or a value carrying a newline is refused
+rather than stored and read back later by the Hyprland config.
 """
+import importlib.util
 import os
-import subprocess
 import sys
 
-CONF = os.path.expanduser("~/.config/omarchy/mullion.conf")
+
+def _load_lib():
+    """Find the shared safety library, in a checkout or installed."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (os.path.join(here, "mullionlib.py"),
+                      os.path.expanduser("~/.local/share/mullion/lib/mullionlib.py")):
+        if os.path.isfile(candidate):
+            spec = importlib.util.spec_from_file_location("mullionlib", candidate)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+    sys.exit("mullion-set: mullionlib.py not found; reinstall Mullion")
+
+
+mfs = _load_lib()
+
+CONF_DIR = os.path.expanduser("~/.config/omarchy")
+CONF_NAME = "mullion.conf"
 DEFAULTS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        "..", "config", "mullion.conf")
+                        os.pardir, "config", "mullion.conf")
 
 # Keys whose change needs the app window-button sweep re-run.
 APP_BUTTON_KEYS = {"hide_app_window_buttons"}
@@ -31,43 +54,37 @@ STYLE_PRESETS = {
 }
 
 
-def read(path=CONF):
+def parse(text):
     values = {}
-    try:
-        for line in open(path):
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#") or "=" not in stripped:
-                continue
-            key, _, raw = stripped.partition("=")
-            values[key.strip()] = raw.strip()
-    except OSError:
-        pass
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, raw = stripped.partition("=")
+        values[key.strip()] = raw.strip()
     return values
 
 
-def ensure_conf():
-    """Create the file from the shipped defaults the first time."""
-    if os.path.exists(CONF):
-        return
-    os.makedirs(os.path.dirname(CONF), exist_ok=True)
-    try:
-        with open(os.path.normpath(DEFAULTS)) as src, open(CONF, "w") as dst:
-            dst.write(src.read())
-    except OSError:
-        open(CONF, "w").close()
+def current_text(dirfd):
+    """The settings file as it stands, creating it from defaults if absent."""
+    text = mfs.read_text_at(dirfd, CONF_NAME, missing_ok=True)
+    if text is not None:
+        return text
+    source = os.path.normpath(DEFAULTS)
+    if os.path.isfile(source):
+        with open(source, "r", encoding="utf-8") as handle:
+            text = handle.read()
+    else:
+        text = ""
+    mfs.write_atomic(dirfd, CONF_NAME, text, mode=0o644)
+    return text
 
 
-def write(updates):
-    """Rewrite the file in place, keeping comments and key order intact."""
-    ensure_conf()
-    try:
-        lines = open(CONF).read().splitlines()
-    except OSError:
-        lines = []
-
+def rewrite(text, updates):
+    """Replace the values in place, keeping comments and key order intact."""
     remaining = dict(updates)
     out = []
-    for line in lines:
+    for line in text.splitlines():
         stripped = line.strip()
         if stripped and not stripped.startswith("#") and "=" in stripped:
             key = stripped.split("=", 1)[0].strip()
@@ -75,27 +92,25 @@ def write(updates):
                 out.append("%s = %s" % (key, remaining.pop(key)))
                 continue
         out.append(line)
-
     # Anything not already present is appended rather than silently dropped.
     for key, value in remaining.items():
         out.append("%s = %s" % (key, value))
-
-    with open(CONF, "w") as handle:
-        handle.write("\n".join(out) + "\n")
+    return "\n".join(out) + "\n"
 
 
 def apply(changed):
     # Hyprland re-reads the file on reload, and the plugin's Lua config reads
     # every window/title-bar value straight out of it.
-    subprocess.run(["hyprctl", "reload"], capture_output=True, text=True)
+    mfs.run([mfs.tool("hyprctl"), "reload"])
 
     if changed & APP_BUTTON_KEYS:
-        helper = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              "use-system-titlebars")
-        if not os.path.exists(helper):
-            helper = os.path.expanduser("~/.local/bin/use-system-titlebars")
-        if os.path.exists(helper):
-            subprocess.run([helper], capture_output=True, text=True)
+        here = os.path.dirname(os.path.abspath(__file__))
+        local = os.path.join(here, "use-system-titlebars")
+        try:
+            sweep = local if os.path.isfile(local) else mfs.helper("use-system-titlebars")
+        except mfs.MullionError:
+            return
+        mfs.run([sweep])
 
 
 def main():
@@ -103,30 +118,39 @@ def main():
     if not args:
         sys.exit(__doc__.strip())
 
-    if args[0] == "--list":
-        ensure_conf()
-        for key, value in read().items():
-            print("%s=%s" % (key, value))
-        return 0
+    dirfd = mfs.owned_dir(CONF_DIR, create=True, mode=0o755)
+    try:
+        if args[0] == "--list":
+            for key, value in parse(current_text(dirfd)).items():
+                print("%s=%s" % (key, value))
+            return 0
 
-    if args[0] == "--get":
-        ensure_conf()
-        print(read().get(args[1], "") if len(args) > 1 else "")
-        return 0
+        if args[0] == "--get":
+            values = parse(current_text(dirfd))
+            print(values.get(args[1], "") if len(args) > 1 else "")
+            return 0
 
-    updates = {}
-    for arg in args:
-        if "=" not in arg:
-            sys.exit("expected key=value, got %r" % arg)
-        key, _, value = arg.partition("=")
-        updates[key.strip()] = value.strip()
+        updates = {}
+        for arg in args:
+            if "=" not in arg:
+                sys.exit("expected key=value, got %r" % arg)
+            key, _, value = arg.partition("=")
+            key, value = mfs.require_conf_pair(key, value)
+            updates[key] = value
 
-    if "window_style" in updates:
-        preset = STYLE_PRESETS.get(updates["window_style"], {})
-        for key, value in preset.items():
-            updates.setdefault(key, str(value))
+        if "window_style" in updates:
+            preset = STYLE_PRESETS.get(updates["window_style"], {})
+            for key, value in preset.items():
+                if key not in updates:
+                    updates[key] = mfs.require_conf_pair(key, str(value))[1]
 
-    write(updates)
+        text = rewrite(current_text(dirfd), updates)
+        mfs.write_atomic(dirfd, CONF_NAME, text, mode=0o644)
+    except mfs.MullionError as exc:
+        sys.exit("mullion-set: %s" % exc)
+    finally:
+        os.close(dirfd)
+
     apply(set(updates))
     for key, value in updates.items():
         print("%s = %s" % (key, value))

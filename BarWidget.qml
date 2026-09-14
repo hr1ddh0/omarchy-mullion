@@ -65,15 +65,17 @@ BarWidget {
     if (busy || health === "healthy" || health === "checking") return
     if (!root.bar) return
 
-    // Absolute paths: this runs in a fresh terminal whose PATH we don't own.
+    // Absolute paths throughout: this runs in a fresh terminal whose PATH we
+    // do not own, so neither the launcher nor the script it opens is left to
+    // be resolved from the environment.
     var target = health === "missing"
       ? pluginDir + "install.sh"
-      : "$HOME/.local/bin/rebuild-hyprbars"
+      : Quickshell.env("HOME") + "/.local/bin/rebuild-hyprbars"
 
     root.busy = true
     // Both scripts change system state, so run them in a visible terminal
     // rather than silently in the background.
-    root.bar.run("omarchy-launch-floating-terminal-with-presentation " + JSON.stringify(target))
+    root.bar.run(JSON.stringify(root.launcher) + " " + JSON.stringify(target))
 
     // Re-probe on a delay; a rebuild compiles, which takes a moment.
     recheck.restart()
@@ -142,6 +144,11 @@ BarWidget {
 
   function helper(name) { return Quickshell.env("HOME") + "/.local/bin/" + name }
 
+  // Omarchy's terminal launcher, by absolute path. Every command this widget
+  // starts names its executable outright rather than letting the shell's
+  // inherited PATH decide what it means.
+  readonly property string launcher: "/usr/bin/omarchy-launch-floating-terminal-with-presentation"
+
   Process {
     id: readProc
     command: [root.helper("mullion-set"), "--list"]
@@ -188,8 +195,11 @@ BarWidget {
   //   0 loaded, 1 built but not loaded, 2 not built
   Process {
     id: probe
-    command: ["bash", "-lc",
-      "if hyprctl plugin list 2>/dev/null | grep -q hyprbars; then exit 0; "
+    // Absolute /usr/bin/bash, and -c rather than -lc: a login shell would
+    // source the user's profile, which is exactly the ambient environment this
+    // probe should not be subject to. Every command inside names its path.
+    command: ["/usr/bin/bash", "-c",
+      "if /usr/bin/hyprctl plugin list 2>/dev/null | /usr/bin/grep -q hyprbars; then exit 0; "
       + "elif [ -f \"$HOME/.local/share/hyprland/plugins/hyprbars.so\" ]; then exit 1; "
       + "else exit 2; fi"]
     onExited: function(exitCode) {
@@ -520,8 +530,7 @@ BarWidget {
         text: "Rebuild title bars"
         bordered: true
         onClicked: {
-          actionProc.command = ["omarchy-launch-floating-terminal-with-presentation",
-                                root.helper("rebuild-hyprbars")]
+          actionProc.command = [root.launcher, root.helper("rebuild-hyprbars")]
           actionProc.running = true
           root.settingsOpen = false
         }

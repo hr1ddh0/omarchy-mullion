@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Snap the focused window to a half / full / centered region of its monitor.
 
     mullion-snap left | right | top | bottom | full | center [window-address]
@@ -8,10 +8,33 @@ Acts on the focused window unless an explicit Hyprland address is given.
 Reads the focused monitor's real geometry and its reserved area (the bar), so
 this works on any resolution, any scale, and any bar position instead of
 assuming one screen size.
+
+The region name and the window address both end up inside a Lua expression
+handed to `hyprctl dispatch`, so both are checked against a fixed set before
+they get anywhere near it: the region against the list below, the address
+against Hyprland's handle format.
 """
+import importlib.util
 import json
+import os
 import subprocess
 import sys
+
+
+def _load_lib():
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (os.path.join(here, "mullionlib.py"),
+                      os.path.expanduser("~/.local/share/mullion/lib/mullionlib.py")):
+        if os.path.isfile(candidate):
+            spec = importlib.util.spec_from_file_location("mullionlib", candidate)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+    sys.exit("mullion-snap: mullionlib.py not found; reinstall Mullion")
+
+
+mfs = _load_lib()
+HYPRCTL = mfs.tool("hyprctl")
 
 REGIONS = (
     "left", "right", "top", "bottom", "full", "center",
@@ -43,7 +66,7 @@ COMPOSE = {
 
 
 def hyprctl_json(*args):
-    out = subprocess.run(["hyprctl", "-j", *args], capture_output=True, text=True, check=True)
+    out = mfs.run([HYPRCTL, "-j", *args], check=True)
     return json.loads(out.stdout)
 
 
@@ -75,8 +98,7 @@ def titlebar_height():
     underneath the Omarchy bar. Every placement reserves this much room.
     """
     try:
-        out = subprocess.run(["hyprctl", "getoption", "plugin:hyprbars:bar_height"],
-                             capture_output=True, text=True, timeout=2)
+        out = mfs.run([HYPRCTL, "getoption", "plugin:hyprbars:bar_height"], timeout=2)
         for line in out.stdout.splitlines():
             if line.strip().startswith("int:"):
                 return max(0, int(line.split(":", 1)[1].strip()))
@@ -130,7 +152,7 @@ def current_region(geometry, boxes, tolerance=8):
 
 
 def dispatch(lua):
-    subprocess.run(["hyprctl", "dispatch", lua], capture_output=True, text=True)
+    mfs.run([HYPRCTL, "dispatch", lua])
 
 
 def main():
@@ -151,15 +173,22 @@ def main():
         sys.exit("usage: mullion-snap [--exact] " + " | ".join(REGIONS) + " [window-address]")
     region = sys.argv[1]
 
-    if len(sys.argv) == 3:
-        address = sys.argv[2]
-        clients = hyprctl_json("clients")
-        if not any(c.get("address") == address for c in clients):
-            sys.exit(f"no window with address {address}")
-    else:
-        address = hyprctl_json("activewindow").get("address")
-        if not address:
-            sys.exit("no focused window")
+    try:
+        if len(sys.argv) == 3:
+            # Checked before use: this is spliced into a Lua expression below.
+            address = mfs.require_window_address(sys.argv[2])
+            clients = hyprctl_json("clients")
+            if not any(c.get("address") == address for c in clients):
+                sys.exit("no window with address %s" % address)
+        else:
+            address = hyprctl_json("activewindow").get("address")
+            if not address:
+                sys.exit("no focused window")
+            # Hyprland's own answer, checked all the same, so a single code
+            # path decides what may be embedded.
+            address = mfs.require_window_address(address)
+    except mfs.MullionError as exc:
+        sys.exit("mullion-snap: %s" % exc)
 
     monitor = focused_monitor()
     # Preview/reporting uses the visual region; placement insets the title bar.
@@ -172,12 +201,12 @@ def main():
 
     x, y, w, h = boxes[region]
 
-    win = f'address:{address}'
+    win = 'address:%s' % address
     # Snapping only means anything for a floating window; a tiled one is placed
     # by the layout and would snap straight back.
-    dispatch(f'hl.dsp.window.float({{ window = "{win}", action = "enable" }})')
-    dispatch(f'hl.dsp.window.resize({{ window = "{win}", x = {w}, y = {h} }})')
-    dispatch(f'hl.dsp.window.move({{ window = "{win}", x = {x}, y = {y} }})')
+    dispatch('hl.dsp.window.float({ window = "%s", action = "enable" })' % win)
+    dispatch('hl.dsp.window.resize({ window = "%s", x = %d, y = %d })' % (win, w, h))
+    dispatch('hl.dsp.window.move({ window = "%s", x = %d, y = %d })' % (win, x, y))
 
 
 if __name__ == "__main__":

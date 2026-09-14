@@ -68,19 +68,80 @@ own home directory.
 
 | What | Where | Why |
 | --- | --- | --- |
-| Builds **hyprbars** from source | `~/.local/share/hyprland/plugins/hyprbars.so` | Hyprland draws no title bars; this is the only way to get them. Cloned from [hyprwm/hyprland-plugins](https://github.com/hyprwm/hyprland-plugins) at an exact commit pinned in `rebuild-hyprbars` for your Hyprland version, then compiled locally. Nothing unpinned is ever built. |
-| Applies 4 local patches to that source | build directory only | Centres the button glyphs, gives them room, mirrors one, and hooks title-bar drags. Each is skipped with a note if upstream changes, so a Hyprland update can never leave you unable to log in. |
+| Builds **hyprbars** from source | `~/.local/share/hyprland/plugins/hyprbars.so` | Hyprland draws no title bars; this is the only way to get them. Cloned from [hyprwm/hyprland-plugins](https://github.com/hyprwm/hyprland-plugins) at an exact commit pinned in `rebuild-hyprbars` for your Hyprland version, checked against the digests in `patches/SOURCES.sha256`, then compiled locally. Nothing unpinned is ever built. |
+| Applies 4 local patches to that source | build directory only | Centres the button glyphs, gives them room, mirrors one, and hooks title-bar drags. All four must apply or the build stops; see [Supply chain](#supply-chain). |
 | Five commands | `~/.local/bin/` | `mullion-set`, `mullion-snap`, `mullion-drag-snap`, `rebuild-hyprbars`, `use-system-titlebars` |
 | One Hyprland config file | `~/.config/hypr/mullion.lua` | The window rules, bindings and title-bar setup |
 | Two lines in `hyprland.lua` | `~/.config/hypr/hyprland.lua` | Loads the above. A timestamped backup is written first. |
 | A block in the theme template | `~/.config/omarchy/themed/hyprland.lua.tpl` | So borders and the title bar follow your theme |
 | Settings | `~/.config/omarchy/mullion.conf` | Left alone if it already exists |
-| Installs **omarchy-minimize** | via `omarchy plugin add` | Minimised windows become bar chips. A separate plugin by Mike Gardner, not vendored. |
+| Installs **omarchy-minimize** | `~/.config/omarchy/plugins/` | Minimised windows become bar chips. A separate plugin by Mike Gardner, not vendored, fetched at the exact commit pinned in `install.sh` and validated by Omarchy's own plugin validator before it is enabled. |
 | Changes GTK's window-button layout | `gsettings` + `~/.config/gtk-{3,4}.0/settings.ini` | Otherwise GNOME apps draw a second close button beside the title bar's. Reversible from the settings panel. |
 | Sets "use system title bar" | Chromium/Chrome/Brave/Edge/Vivaldi/Firefox profiles | Same reason. Backs each file up, refuses while the browser is running, reversible. |
 
 `./uninstall.sh` reverses all of it, restores the window buttons it hid, and
 leaves your settings file in place.
+
+## Supply chain
+
+This plugin fetches code from the internet and compiles it, so what it will and
+will not run is worth stating exactly.
+
+**Everything fetched is pinned.** Two things are downloaded, each at an exact
+commit written into this repository, never at a branch:
+
+| Input | Pinned to | Anchored by |
+| --- | --- | --- |
+| `hyprwm/hyprland-plugins` (hyprbars) | `7644cec`, in `bin/rebuild-hyprbars` | Must be the commit upstream's `v0.56.0` tag points at, or the build stops |
+| `gardnmi/omarchy-minimize` | `5c29836`, in `install.sh` | Must pass Omarchy's `omarchy-plugin-validate` and declare the expected plugin id |
+
+**The compiled source is attested.** `patches/SOURCES.sha256` records a SHA-256
+for every file the build touches, twice: as upstream ships it, and again after
+Mullion's four patches are applied. `rebuild-hyprbars` checks both. The commit
+fixes what is fetched, the first set of digests proves the fetch was not
+tampered with, the patches are deterministic text substitutions, and the second
+set proves the exact bytes handed to the compiler are the ones this release was
+reviewed with. Regenerate them with `./patches/verify-pins regenerate <commit>`.
+
+**Patches fail closed.** All four must apply. They used to be skipped with a
+note when upstream drifted, which made sense when the source floated; against a
+pinned commit a mismatch means the tree is not what we think it is, so the build
+stops instead. Nothing is replaced when it does: your existing title bars keep
+working, and `hyprland.lua` loads the plugin inside a `pcall`, so a failed or
+missing build can never block login.
+
+**The build environment is controlled.** The compiler runs under `env -i` with
+a fixed search path, so an inherited `CXXFLAGS`, `LD_PRELOAD` or
+`PKG_CONFIG_PATH` cannot reach into the compile or redirect which Hyprland
+headers are used.
+
+**The result is recorded.** A Hyprland plugin is compiled here, against this
+machine's Hyprland, so no publisher can hand you a digest for the binary you end
+up with. Instead every input that determined it is written to
+`~/.local/share/mullion/build-record.json`: both commits, the release tag, the
+compiler version, the header version, and the SHA-256 of the `.so` that was
+installed.
+
+**Executables are not resolved from `$PATH`.** These helpers run from the
+compositor, from a bar widget and from an installer, none of which control the
+environment they inherit. Every external command is resolved to an absolute path
+in a root-owned, non-world-writable system directory; Mullion's own commands are
+required to be owned by you and not symlinks. The Hyprland bindings and the
+`hyprbars` hooks call these by absolute path too.
+
+**Writes are descriptor-safe and atomic.** Every file this plugin creates or
+edits, including other applications' settings, is written through a directory
+descriptor whose ownership was verified and then held, opened without following
+links, and put in place with a rename. A component swapped for a symlink
+between the check and the write cannot redirect it, and no reader ever sees a
+half-written config. Anything derived from a user argument, an environment
+variable or a settings file is validated before it becomes part of a path or a
+dispatched command.
+
+One interaction worth knowing: `omarchy plugin update` fast-forwards a plugin to
+its remote's latest commit, so running it on `io.github.gardnmi.window-shelf`
+moves that dependency off the pin recorded here. Re-running `./install.sh` does
+not undo that; remove the plugin first if you want the pin back.
 
 ## Settings
 
@@ -157,8 +218,9 @@ that bumps Hyprland makes the title bars stop appearing. Nothing else breaks and
 login is never blocked; the bar icon switches to its rebuild state.
 
 Each Mullion release pins the exact hyprland-plugins commit that pairs with the
-Hyprland versions it supports (currently 0.56.0 to 0.56.2), and never builds
-anything else. So after a Hyprland update:
+Hyprland versions it supports (currently 0.56.0 to 0.56.2), records a digest for
+every source file it compiles, and never builds anything else. So after a
+Hyprland update:
 
 ```bash
 omarchy plugin update hriddho.mullion   # picks up the pin for the new Hyprland
@@ -188,8 +250,9 @@ Minimized windows are restored to your current workspace first.
 
 ## Patches to hyprbars
 
-Two small build-time patches, both cosmetic and both skipped with a note (never
-a build failure) if upstream changes:
+Four build-time patches, applied to the pinned source before it is compiled.
+All four must apply: see [Supply chain](#supply-chain) for why a mismatch stops
+the build rather than being skipped.
 
 hyprbars draws each coloured dot into a box it rounds to whole pixels, but
 positions the glyph from the same arithmetic *without* rounding. At a
@@ -277,7 +340,7 @@ This project is the integration layer. The heavy lifting belongs to:
   dependency, not vendored.
 
 Neither is redistributed here; the installer fetches both from their own
-sources.
+sources, each at an exact pinned commit. See [Supply chain](#supply-chain).
 
 ## License
 
