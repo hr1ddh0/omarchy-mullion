@@ -15,6 +15,9 @@ set -euo pipefail
 # is already trusted by virtue of running at all. Everything else resolves from
 # there, and the inherited environment is stripped of anything that could
 # redirect an interpreter, a library or a build.
+# The caller's PATH is kept only to tell them whether ~/.local/bin is on it;
+# it is never used to find anything.
+CALLER_PATH=${PATH:-}
 export PATH=/usr/bin:/usr/local/bin:/usr/sbin
 unset LD_PRELOAD LD_LIBRARY_PATH PYTHONPATH PYTHONHOME BASH_ENV ENV IFS \
       CXXFLAGS LDFLAGS PKG_CONFIG_PATH 2>/dev/null || true
@@ -120,9 +123,9 @@ else
   echo "Keeping your existing ~/.config/omarchy/mullion.conf"
 fi
 
-case ":$PATH:" in
+case ":$CALLER_PATH:" in
   *":$HOME/.local/bin:"*) ;;
-  *) echo "Note: ~/.local/bin is not on your PATH; the snap keybindings use absolute paths, so they work regardless." ;;
+  *) echo "Note: ~/.local/bin is not on your PATH, so run mullion-set by its full path; the keybindings already use absolute paths." ;;
 esac
 
 say "Building the hyprbars title-bar plugin"
