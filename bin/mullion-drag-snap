@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -I
 """Drag a window to a screen edge to snap it there, with a live preview.
 
     mullion-drag-snap start   # bound to SUPER + left-mouse press
@@ -25,17 +25,50 @@ import subprocess
 import sys
 import time
 
+# mullion-snap is imported from its file below; keep Python from writing a
+# bytecode cache beside the installed commands.
+sys.dont_write_bytecode = True
+
 
 def _load_lib():
-    here = os.path.dirname(os.path.abspath(__file__))
-    for candidate in (os.path.join(here, "mullionlib.py"),
-                      os.path.expanduser("~/.local/share/mullion/lib/mullionlib.py")):
-        if os.path.isfile(candidate):
-            spec = importlib.util.spec_from_file_location("mullionlib", candidate)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            return module
-    sys.exit("mullion-drag-snap: mullionlib.py not found; reinstall Mullion")
+    """Load the shared safety library from the one place this copy may use.
+
+    An installed command loads only the installed library, and a copy run from
+    a checkout only the one beside it, so a file dropped on some other path can
+    never be imported in its place. The home directory comes from the password
+    database rather than $HOME, and the file must be a regular file owned by
+    the user and writable by nobody else.
+    """
+    import pwd
+    import stat
+    import types
+    name = os.path.basename(__file__)
+    here = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
+    home = pwd.getpwuid(os.getuid()).pw_dir
+    if here == os.path.realpath(os.path.join(home, ".local", "bin")):
+        path = os.path.join(home, ".local", "share", "mullion", "lib", "mullionlib.py")
+    else:
+        path = os.path.join(here, "mullionlib.py")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        sys.exit("%s: %s is missing or is a link; reinstall Mullion" % (name, path))
+    with os.fdopen(fd, "rb") as handle:
+        st = os.fstat(handle.fileno())
+        if (not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid()
+                or st.st_mode & (stat.S_IWGRP | stat.S_IWOTH)):
+            sys.exit("%s: refusing to load %s: not a regular file owned solely by you"
+                     % (name, path))
+        source = handle.read()
+    # Run from the bytes just verified, never from a bytecode cache beside them.
+    module = types.ModuleType("mullionlib")
+    module.__file__ = path
+    exec(compile(source, path, "exec"), module.__dict__)
+    try:
+        module.require_home()
+    except module.MullionError as exc:
+        sys.exit("%s: %s" % (name, exc))
+    return module
 
 
 mfs = _load_lib()
@@ -45,7 +78,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # A relative or traversing value, or a directory somebody else owns, is refused
 # outright instead of quietly becoming somewhere we did not mean to write.
 try:
-    RUNTIME = mfs.require_env_dir("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+    RUNTIME = mfs.require_runtime_dir()
 except mfs.MullionError as exc:
     sys.exit("mullion-drag-snap: %s" % exc)
 
@@ -104,8 +137,17 @@ SETTINGS = settings()
 # How close to an edge counts as "on" it, and how far along an edge still
 # counts as its corner. Clamped, because these come out of a file the user
 # edits and a wild value would make every drag snap or none at all.
-EDGE = max(1, min(200, int(SETTINGS.get("snap_edge", 10) or 10)))
-CORNER_SPAN = max(1, min(600, int(SETTINGS.get("snap_corner", 140) or 140)))
+def setting_int(key, default, low, high):
+    """A whole number from the settings file, clamped; a hand-edited value
+    that is not a number falls back to the default instead of crashing."""
+    value = SETTINGS.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int):
+        value = default
+    return max(low, min(high, value))
+
+
+EDGE = setting_int("snap_edge", 10, 1, 200)
+CORNER_SPAN = setting_int("snap_corner", 140, 1, 600)
 # Ignore a drag that never really moved, so a plain SUPER+click near an edge
 # does not rearrange anything.
 MIN_TRAVEL = 24
@@ -121,7 +163,7 @@ def hypr(request):
     """Talk to Hyprland's command socket directly; far cheaper than hyprctl."""
     sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") or ""
     # Part of a filesystem path, so it may only be a plain name.
-    if not sig or "/" in sig or sig in (".", ".."):
+    if not mfs.HYPRLAND_SIGNATURE.match(sig):
         raise OSError("HYPRLAND_INSTANCE_SIGNATURE is not usable")
     path = os.path.join(RUNTIME, "hypr", sig, ".socket.sock")
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
@@ -201,8 +243,8 @@ def region_at(mons, x, y):
 def snap_path():
     """Where mullion-snap lives: beside us, or in the install location."""
     local = os.path.join(HERE, "mullion-snap")
-    if os.path.isfile(local):
-        return local
+    if os.path.lexists(local):
+        return mfs.owned_file(local)
     return mfs.helper("mullion-snap")
 
 
@@ -214,12 +256,19 @@ def snap_module():
     instant. Importing it keeps one source of truth for the geometry while
     making a zone change pure arithmetic.
     """
-    from importlib.machinery import SourceFileLoader
+    import types
 
-    loader = SourceFileLoader("mullion_snap", snap_path())
-    spec = importlib.util.spec_from_loader("mullion_snap", loader)
-    module = importlib.util.module_from_spec(spec)
-    loader.exec_module(module)
+    path = snap_path()
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as handle:
+        st = os.fstat(handle.fileno())
+        if st.st_uid != os.geteuid() or st.st_mode & 0o022:
+            raise mfs.MullionError("%s is not owned solely by you" % path)
+        source = handle.read()
+    # Executed from the verified bytes, never from a bytecode cache.
+    module = types.ModuleType("mullion_snap")
+    module.__file__ = path
+    exec(compile(source, path, "exec"), module.__dict__)
     return module
 
 
@@ -244,12 +293,10 @@ def overlay(method, payload=None, wait=False):
         return
     if payload is not None:
         args.append(json.dumps(payload))
-    # omarchy-shell needs OMARCHY_PATH, and this runs from Hyprland's exec
-    # where we cannot count on the session environment carrying it. PATH is
-    # replaced rather than inherited for the same reason.
-    env = dict(os.environ)
-    env["PATH"] = mfs.SAFE_PATH
-    env.setdefault("OMARCHY_PATH", "/usr/share/omarchy")
+    # omarchy-shell needs OMARCHY_PATH. It is pinned to the packaged,
+    # root-owned location rather than inherited, and PATH and the loader and
+    # interpreter variables are replaced or dropped for the same reason.
+    env = mfs.child_env({"OMARCHY_PATH": "/usr/share/omarchy"})
     try:
         proc = subprocess.Popen(args, stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL, env=env)
@@ -317,77 +364,118 @@ def watch():
         overlay("hide", wait=True)
 
 
-def watcher_running():
-    """Is a watcher from this drag still alive?"""
+def _process_start_time(pid):
+    """When a process started (field 22 of /proc/<pid>/stat), or None."""
     try:
-        fd = runtime_dir()
-    except mfs.MullionError:
-        return False
+        with open("/proc/%d/stat" % pid) as handle:
+            return handle.read().rsplit(")", 1)[1].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
+def _lock_is_live(fd):
+    """Does the lock name a watcher that is still running?
+
+    A pid alone is not enough, since pids are reused: the recorded start time
+    must match the live process, and no lock outlives the longest drag. A lock
+    still being written (empty and only just created) counts as live.
+    """
     try:
         raw = mfs.read_text_at(fd, LOCK_NAME, missing_ok=True)
-    except mfs.MullionError:
+        age = time.time() - os.lstat(LOCK_NAME, dir_fd=fd).st_mtime
+    except (mfs.MullionError, OSError):
         return False
-    finally:
-        os.close(fd)
+    if raw is None:
+        return False
+    if not raw.strip():
+        return age < 5
     try:
-        pid = int((raw or "").strip())
+        pid_text, started, created = raw.split()
+        pid = int(pid_text)
+        if time.time() - float(created) > MAX_DRAG_SECONDS + 10:
+            return False
     except ValueError:
         return False
-    try:
-        os.kill(pid, 0)          # signal 0 only tests for existence
-        return True
-    except OSError:
-        return False
+    return _process_start_time(pid) == started
+
+
+def take_lock(fd):
+    """Create the watcher lock atomically, or return None if one is live.
+
+    O_EXCL makes creation the single decision point: of two `start` calls
+    racing for the same drag, exactly one creates the file. A lock left by a
+    watcher that no longer exists is cleared and the creation retried once.
+    """
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+    for _ in range(2):
+        try:
+            return os.open(LOCK_NAME, flags, 0o600, dir_fd=fd)
+        except FileExistsError:
+            if _lock_is_live(fd):
+                return None
+            mfs.remove_at(fd, LOCK_NAME)
+    return None
 
 
 def start():
     if not SETTINGS.get("drag_snap", True):
         return
-    if watcher_running():
-        # The other half of the same drag already started one.
-        return
-    pos = cursor_pos()
-    log("drag start at %s" % (pos,), reset=True)
-    if not pos:
-        return
-
-    fd = runtime_dir()
-    try:
-        mfs.write_atomic(fd, STATE_NAME,
-                         json.dumps({"x": pos[0], "y": pos[1], "t": time.time()}),
-                         mode=0o600)
-    finally:
-        os.close(fd)
-
-    # Detach so the key binding returns immediately and the native window drag
-    # is not held up behind us.
-    if os.fork() != 0:
-        return
-    os.setsid()
     try:
         fd = runtime_dir()
-        try:
-            mfs.write_atomic(fd, LOCK_NAME, str(os.getpid()), mode=0o600)
-        finally:
+    except (mfs.MullionError, OSError):
+        return
+    lock = None
+    try:
+        lock = take_lock(fd)
+        if lock is None:
+            # The other half of the same drag already started one.
+            return
+        pos = cursor_pos()
+        log("drag start at %s" % (pos,), reset=True)
+        if not pos:
+            os.close(lock)
+            lock = None
+            mfs.remove_at(fd, LOCK_NAME)
+            return
+        mfs.write_atomic(fd, STATE_NAME,
+                         json.dumps({"x": pos[0], "y": pos[1], "t": time.time()}),
+                         mode=0o600, keep_mode=False)
+
+        # Detach so the key binding returns immediately and the native window
+        # drag is not held up behind us.
+        pid = os.fork()
+        if pid == 0:
+            os.close(lock)
             os.close(fd)
-        watch()
-    finally:
-        try:
-            fd = runtime_dir()
+            os.setsid()
             try:
-                mfs.remove_at(fd, LOCK_NAME)
+                watch()
             finally:
-                os.close(fd)
-        except Exception:
-            pass
-        os._exit(0)
+                try:
+                    child_fd = runtime_dir()
+                    try:
+                        mfs.remove_at(child_fd, LOCK_NAME)
+                    finally:
+                        os.close(child_fd)
+                except Exception:
+                    pass
+                os._exit(0)
+        os.write(lock, ("%d %s %.3f" % (pid, _process_start_time(pid) or "0",
+                                         time.time())).encode())
+    finally:
+        if lock is not None:
+            os.close(lock)
+        os.close(fd)
 
 
 def end():
     if not SETTINGS.get("drag_snap", True):
         return
     began = None
-    fd = runtime_dir()
+    try:
+        fd = runtime_dir()
+    except (mfs.MullionError, OSError):
+        return
     try:
         raw = mfs.read_text_at(fd, STATE_NAME, missing_ok=True)
         if raw:

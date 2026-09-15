@@ -15,6 +15,10 @@
 -- NOTE ON ACTIONS: Omarchy configures Hyprland in Lua, so `hyprctl dispatch`
 -- takes a Lua expression, not the old `hyprctl dispatch fullscreen 1` form.
 -- The old form fails silently: the button would look fine and do nothing.
+--
+-- Every command in this file, button actions included, names its executable
+-- by absolute path. hyprbars runs actions through a shell whose PATH is the
+-- compositor's, which this plugin does not control.
 
 -- ---------------------------------------------------------------------------
 -- Settings.
@@ -29,6 +33,15 @@
 -- falls back to the default rather than reaching Hyprland: a typo in this file
 -- should never be able to produce a desktop with no borders, a negative title
 -- bar, or square corners you did not ask for.
+-- The home directory, checked once before it is used in any path or command:
+-- only a plain absolute path is accepted. If it is anything else, the settings
+-- file is not read and the snap bindings are not installed, rather than
+-- splicing an unexpected value into a shell command.
+local HOME = os.getenv("HOME") or ""
+if not HOME:match("^/[%w._/-]+$") or HOME:find("%.%.") then
+  HOME = nil
+end
+
 local schema = {
   window_style = { default = "macos", choices = { macos = true, windows = true, none = true } },
   button_size = { default = 12, min = 6, max = 28 },
@@ -49,8 +62,7 @@ for key, rule in pairs(schema) do
 end
 
 do
-  local path = os.getenv("HOME") .. "/.config/omarchy/mullion.conf"
-  local file = io.open(path, "r")
+  local file = HOME and io.open(HOME .. "/.config/omarchy/mullion.conf", "r")
   if file then
     for line in file:lines() do
       if not line:match("^%s*#") then
@@ -205,7 +217,7 @@ if hl.plugin.hyprbars then
         bar_part_of_window = true,
         bar_precedence_over_border = true,
         -- Double-click the bar to zoom/unzoom.
-        on_double_click = [[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
+        on_double_click = [[/usr/bin/hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
       },
     },
   })
@@ -224,7 +236,7 @@ if hl.plugin.hyprbars then
       fg_color = "rgb(000000)",
       size = settings.button_size,
       icon = "",
-      action = [[hyprctl dispatch 'hl.dsp.window.close()']],
+      action = [[/usr/bin/hyprctl dispatch 'hl.dsp.window.close()']],
     })
 
     hl.plugin.hyprbars.add_button({
@@ -232,7 +244,7 @@ if hl.plugin.hyprbars then
       fg_color = "rgb(000000)",
       size = settings.button_size,
       icon = "",
-      action = [[hyprctl dispatch 'hl.dsp.window.move({ workspace = "special:omarchy-minimized", follow = false })']],
+      action = [[/usr/bin/hyprctl dispatch 'hl.dsp.window.move({ workspace = "special:omarchy-minimized", follow = false })']],
     })
 
     hl.plugin.hyprbars.add_button({
@@ -241,7 +253,7 @@ if hl.plugin.hyprbars then
       size = settings.button_size,
       icon = "󰘖",
       mirror = true,
-      action = [[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
+      action = [[/usr/bin/hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
     })
   elseif style == "windows" then
     -- Minimise, maximise, close: reading left to right on screen, which is
@@ -251,7 +263,7 @@ if hl.plugin.hyprbars then
       fg_color = theme_foreground,
       size = settings.button_size,
       icon = "",
-      action = [[hyprctl dispatch 'hl.dsp.window.close()']],
+      action = [[/usr/bin/hyprctl dispatch 'hl.dsp.window.close()']],
     })
 
     hl.plugin.hyprbars.add_button({
@@ -262,7 +274,7 @@ if hl.plugin.hyprbars then
       -- "window maximise" glyphs all carry a filled title-bar strip and read
       -- as a different mark at this size.
       icon = "□",
-      action = [[hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
+      action = [[/usr/bin/hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })']],
     })
 
     hl.plugin.hyprbars.add_button({
@@ -270,7 +282,7 @@ if hl.plugin.hyprbars then
       fg_color = theme_foreground,
       size = settings.button_size,
       icon = "",
-      action = [[hyprctl dispatch 'hl.dsp.window.move({ workspace = "special:omarchy-minimized", follow = false })']],
+      action = [[/usr/bin/hyprctl dispatch 'hl.dsp.window.move({ workspace = "special:omarchy-minimized", follow = false })']],
     })
   end
   -- style == "none": a bar to drag and a title, and nothing to click.
@@ -288,11 +300,20 @@ else
   -- Resolved by the shell, because UID is a shell variable, not an environment one.
   -- Every command here is named by absolute path: this string is handed to a
   -- shell whose PATH comes from the compositor's environment, not from us.
-  local marker = '"${XDG_RUNTIME_DIR:-/run/user/$(/usr/bin/id -u)}/mullion-reload"'
-  hl.exec_cmd("/usr/bin/sh -c 'now=$(/usr/bin/date +%s); "
-    .. "last=$(/usr/bin/cat " .. marker .. " 2>/dev/null || echo 0); "
-    .. "if [ $((now - last)) -ge 10 ]; then echo $now > " .. marker
-    .. "; /usr/bin/sleep 1; /usr/bin/hyprctl reload; fi'")
+  --
+  -- The runtime directory is validated here, in Lua, before it becomes part of
+  -- that shell string: only the standard owner-only /run/user/<uid> form is
+  -- accepted, so the value spliced in can contain nothing but digits and
+  -- slashes. Anything else skips the re-read; the buttons then appear on the
+  -- next reload instead.
+  local runtime = os.getenv("XDG_RUNTIME_DIR") or ""
+  if runtime:match("^/run/user/%d+$") then
+    local marker = runtime .. "/mullion-reload"
+    hl.exec_cmd("/usr/bin/sh -c 'now=$(/usr/bin/date +%s); "
+      .. "last=$(/usr/bin/cat " .. marker .. " 2>/dev/null || echo 0); "
+      .. "if [ $((now - last)) -ge 10 ]; then echo $now > " .. marker
+      .. "; /usr/bin/sleep 1; /usr/bin/hyprctl reload; fi'")
+  end
 end
 
 -- ---------------------------------------------------------------------------
@@ -307,20 +328,22 @@ end
 -- These four were Omarchy's directional window focus, a tiling-first idea
 -- that this floating-first setup does not need, so they are given over to
 -- snapping entirely. Focus follows the mouse and clicks, as on macOS.
-hl.unbind("SUPER + LEFT")
-hl.unbind("SUPER + RIGHT")
-hl.unbind("SUPER + UP")
-hl.unbind("SUPER + DOWN")
-
 -- Bound by absolute path rather than by name. These run from the compositor,
 -- whose PATH we do not control, so leaving the name to be resolved there would
 -- let any writable directory ahead of ~/.local/bin decide what they mean.
-local BIN = os.getenv("HOME") .. "/.local/bin/"
+local BIN = HOME and (HOME .. "/.local/bin/")
 
-o.bind("SUPER + LEFT", "Snap window left / quarter", BIN .. "mullion-snap left")
-o.bind("SUPER + RIGHT", "Snap window right / quarter", BIN .. "mullion-snap right")
-o.bind("SUPER + UP", "Snap window up / quarter", BIN .. "mullion-snap top")
-o.bind("SUPER + DOWN", "Snap window down / quarter", BIN .. "mullion-snap bottom")
+if BIN then
+  hl.unbind("SUPER + LEFT")
+  hl.unbind("SUPER + RIGHT")
+  hl.unbind("SUPER + UP")
+  hl.unbind("SUPER + DOWN")
+
+  o.bind("SUPER + LEFT", "Snap window left / quarter", BIN .. "mullion-snap left")
+  o.bind("SUPER + RIGHT", "Snap window right / quarter", BIN .. "mullion-snap right")
+  o.bind("SUPER + UP", "Snap window up / quarter", BIN .. "mullion-snap top")
+  o.bind("SUPER + DOWN", "Snap window down / quarter", BIN .. "mullion-snap bottom")
+end
 
 -- Arrows compose, exactly like Windows Snap: LEFT then UP puts the window in
 -- the top-left quarter, so four apps tile a workspace with two presses each.
@@ -342,8 +365,10 @@ o.bind("SUPER + DOWN", "Snap window down / quarter", BIN .. "mullion-snap bottom
 -- binds are non-consuming, so Omarchy's own "Move window" binding still runs
 -- and the drag itself behaves exactly as before; if this is removed, nothing
 -- about dragging changes.
-o.bind("SUPER + mouse:272", "Begin drag-snap", BIN .. "mullion-drag-snap start", { non_consuming = true })
-o.bind("SUPER + mouse:272", "Finish drag-snap", BIN .. "mullion-drag-snap end", { non_consuming = true, release = true })
+if BIN then
+  o.bind("SUPER + mouse:272", "Begin drag-snap", BIN .. "mullion-drag-snap start", { non_consuming = true })
+  o.bind("SUPER + mouse:272", "Finish drag-snap", BIN .. "mullion-drag-snap end", { non_consuming = true, release = true })
+end
 
 -- ---------------------------------------------------------------------------
 -- Mac muscle memory. SUPER stands in for Command.

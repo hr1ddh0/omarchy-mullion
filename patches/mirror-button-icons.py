@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -I
 """Let a hyprbars button mirror its glyph horizontally.
 
 macOS's green button shows two arrows on the NW-SE diagonal. Nerd Font's

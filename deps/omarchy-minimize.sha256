@@ -1,0 +1,20 @@
+# Every file of gardnmi/omarchy-minimize at commit 5c29836d0c21e852477874dc73bb85976781dfa7,
+# the version Mullion was reviewed and tested with, as SHA-256 and path.
+#
+# install.sh verifies a fresh download against this before enabling it, and
+# an existing install against it before accepting it; the bar widget re-checks
+# it on every health probe. Nothing but these files may be present (the .git
+# directory is removed at install), and none may be a link.
+#
+# Regenerate with: bin/mullionlib.py tree-manifest <checkout-without-.git>
+
+29f75943bbb09a49de540b0bdf8b55fb47275979d0e4e862360e28cbca37eff5  AGENTS.md
+be3aae5ab2161cee7dde20d8e7348480222c3c40decae135d8c60e7e9db63c9b  BarWidget.qml
+30da7ffa1183a42c2ebc0e79abbcb5c869949dc6d148663159c688f982a91e56  LICENSE
+9bbd963bc4beda365da35241b09c033628c6cfbb23c8b2c7276b75296a7e9066  README.md
+6b88c5300433e781fb3bdbc93f00da7a1087f3dddc485e8323429704759eac21  assets/hover-preview.png
+f1c0d2bffd349ad918a9cd526d8357f1b7b10c7c38acfb43090a97ff5fda56f4  assets/interactive-peek.png
+e80849a0fe7911db973cd77200818928711ebb8e5b78c617fc689a9d9fb85da5  deploy-local.sh
+2675fff0184b87c4adbda58e612b99a7b3e131651ca45d5077a33cba8c4c5e8b  manifest.json
+dde6982976896ea973ff5041f0773f1b954a9c8052c81fa61d8dfd4ba9d32b21  mise.toml
+f1c0d2bffd349ad918a9cd526d8357f1b7b10c7c38acfb43090a97ff5fda56f4  preview.png

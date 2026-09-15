@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -I
 """Give hyprbars' button glyphs room to render.
 
 Two upstream choices make the marks hard to read at a macOS-sized 12px dot:
@@ -9,7 +9,8 @@ Two upstream choices make the marks hard to read at a macOS-sized 12px dot:
     than the dot (a two-glyph mark, for instance) is truncated to an ellipsis.
 
 This nudges the scale up slightly and lets the layout use the room it needs.
-Both are cosmetic, so a mismatch is skipped rather than failing the build.
+Both are cosmetic, but the source is pinned, so text that does not match means
+the tree is not what was reviewed, and the build stops.
 
 Usage: icon-render-room.py <hyprbars source dir>
 """

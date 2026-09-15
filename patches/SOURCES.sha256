@@ -1,27 +1,47 @@
 # Build-input attestation for the hyprbars title-bar plugin.
 #
-# rebuild-hyprbars checks every line here. `pre` digests are the upstream
-# sources as they arrive at the pinned commit, checked before anything local
-# touches them; `post` digests are those same files once Mullion's four patches
-# have been applied, checked immediately before the compiler runs.
+# rebuild-hyprbars checks every line here against every file in the hyprbars
+# source directory. `pre` digests are the upstream tree as it arrives at the
+# pinned commit, checked before anything local touches it; `post` digests are
+# the same tree once Mullion's four patches have been applied, checked
+# immediately before the compiler runs.
 #
-# Together they make the build reproducible from published inputs: the commit
-# fixes what is fetched, the `pre` digests prove the fetch was not tampered
-# with, the patches are deterministic text substitutions, and the `post`
-# digests prove the exact source that gets compiled on this machine is the
-# exact source that was reviewed for this release. A mismatch at either point
-# stops the build rather than compiling something nobody looked at.
+# Every entry in the directory is attested, the Makefile that `make` executes
+# included. A missing file, an added file, a link, a subdirectory or a single
+# changed byte stops the build.
 #
-# Regenerate with: ./patches/verify-pins --regenerate
+# Together with the pinned commit this makes the build reproducible from
+# published inputs: the commit fixes what is fetched, the `pre` digests prove
+# the fetch is what was reviewed, the patches are deterministic text
+# substitutions, and the `post` digests prove the exact bytes compiled on this
+# machine are the bytes reviewed for this release.
+#
+# Regenerate a section with: ./patches/verify-pins regenerate <commit>
 #
 # Sections are keyed by the hyprland-plugins commit, so a future Hyprland
 # release adds a section rather than editing one.
 
 [7644cecdb947060682891a0db2a0cdc5c0b9e704]
 # hyprwm/hyprland-plugins, tag v0.56.0, paired with Hyprland 0.56.0-0.56.2.
+pre   0e607597b130ec8277fb301b2b97b0fcde977a64e2163b53024907e4b4476fe7  BarPassElement.cpp
+pre   9a460848366edc61c55500f5577180d10f383b65022b3952648efe3b4e7208f8  BarPassElement.hpp
+pre   6eddd3c3b2a40b9909a1e64ed20756d382e547fe5eab8131460ac68a5ce9ebc9  CMakeLists.txt
+pre   a964b164390bb344dca86611cda3e7088b5bc9ac8f62837288d6425df3dc73f5  Makefile
+pre   465e6707022c2769e2fcac0138e391aa49e8ce47469e3ef435d3d92d1b0fd8da  README.md
 pre   ae7db47e4f29b41dc79d786cb5fe99b6e69d92f2af94241c286b2eb6d2eaa04d  barDeco.cpp
-pre   bebfc41d70e72de87948703ad6f0acac636d2fdc2f7708eb7bfb658f811b3152  main.cpp
+pre   9e2c3e6829eeb6b24be69456ed97ea1fef99e4d45477cbb518ae925b07a3207f  barDeco.hpp
+pre   db6f00e737f9929cbd025d0e442811ac6380b133a926ecc56a19028d03ef3358  default.nix
 pre   5519fbcb023a5463a0e3983f0fd3f823fd426e7d7fa0ba323adb8531e248f012  globals.hpp
-post  c5c0873b769c23865d3109eea4da8aa2580e586654bdadf26b0c24c1e77ec59f  barDeco.cpp
-post  411b5dad674b8d505945b8f400cbcd17ce5cde5d55dbaec88310a4dfd1db636c  main.cpp
+pre   bebfc41d70e72de87948703ad6f0acac636d2fdc2f7708eb7bfb658f811b3152  main.cpp
+pre   6c1a41e9ac7f9f82a93f10e6156afab0b07e5c9e81c29f6e15c2c4823c41df8c  meson.build
+post  0e607597b130ec8277fb301b2b97b0fcde977a64e2163b53024907e4b4476fe7  BarPassElement.cpp
+post  9a460848366edc61c55500f5577180d10f383b65022b3952648efe3b4e7208f8  BarPassElement.hpp
+post  6eddd3c3b2a40b9909a1e64ed20756d382e547fe5eab8131460ac68a5ce9ebc9  CMakeLists.txt
+post  a964b164390bb344dca86611cda3e7088b5bc9ac8f62837288d6425df3dc73f5  Makefile
+post  465e6707022c2769e2fcac0138e391aa49e8ce47469e3ef435d3d92d1b0fd8da  README.md
+post  cfcf454bc5bb25606b9da5d689efe17b3b30496f68904a9ad113761150c20ca2  barDeco.cpp
+post  9e2c3e6829eeb6b24be69456ed97ea1fef99e4d45477cbb518ae925b07a3207f  barDeco.hpp
+post  db6f00e737f9929cbd025d0e442811ac6380b133a926ecc56a19028d03ef3358  default.nix
 post  e1216113e91e4f5101a70ecc41bd43c69c5f8c55e94e39eac2d02aad3e99e390  globals.hpp
+post  411b5dad674b8d505945b8f400cbcd17ce5cde5d55dbaec88310a4dfd1db636c  main.cpp
+post  6c1a41e9ac7f9f82a93f10e6156afab0b07e5c9e81c29f6e15c2c4823c41df8c  meson.build

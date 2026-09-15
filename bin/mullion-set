@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -I
 """Change Mullion settings and apply them.
 
     mullion-set rounding=14 shadow=false
@@ -20,26 +20,69 @@ import importlib.util
 import os
 import sys
 
+# Nothing Mullion runs is loaded from, or leaves behind, a bytecode cache.
+sys.dont_write_bytecode = True
+
 
 def _load_lib():
-    """Find the shared safety library, in a checkout or installed."""
-    here = os.path.dirname(os.path.abspath(__file__))
-    for candidate in (os.path.join(here, "mullionlib.py"),
-                      os.path.expanduser("~/.local/share/mullion/lib/mullionlib.py")):
-        if os.path.isfile(candidate):
-            spec = importlib.util.spec_from_file_location("mullionlib", candidate)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            return module
-    sys.exit("mullion-set: mullionlib.py not found; reinstall Mullion")
+    """Load the shared safety library from the one place this copy may use.
+
+    An installed command loads only the installed library, and a copy run from
+    a checkout only the one beside it, so a file dropped on some other path can
+    never be imported in its place. The home directory comes from the password
+    database rather than $HOME, and the file must be a regular file owned by
+    the user and writable by nobody else.
+    """
+    import pwd
+    import stat
+    import types
+    name = os.path.basename(__file__)
+    here = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
+    home = pwd.getpwuid(os.getuid()).pw_dir
+    if here == os.path.realpath(os.path.join(home, ".local", "bin")):
+        path = os.path.join(home, ".local", "share", "mullion", "lib", "mullionlib.py")
+    else:
+        path = os.path.join(here, "mullionlib.py")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        sys.exit("%s: %s is missing or is a link; reinstall Mullion" % (name, path))
+    with os.fdopen(fd, "rb") as handle:
+        st = os.fstat(handle.fileno())
+        if (not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid()
+                or st.st_mode & (stat.S_IWGRP | stat.S_IWOTH)):
+            sys.exit("%s: refusing to load %s: not a regular file owned solely by you"
+                     % (name, path))
+        source = handle.read()
+    # Run from the bytes just verified, never from a bytecode cache beside them.
+    module = types.ModuleType("mullionlib")
+    module.__file__ = path
+    exec(compile(source, path, "exec"), module.__dict__)
+    try:
+        module.require_home()
+    except module.MullionError as exc:
+        sys.exit("%s: %s" % (name, exc))
+    return module
 
 
 mfs = _load_lib()
 
-CONF_DIR = os.path.expanduser("~/.config/omarchy")
+CONF_DIR = mfs.user_path(".config", "omarchy")
 CONF_NAME = "mullion.conf"
-DEFAULTS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        os.pardir, "config", "mullion.conf")
+
+
+def defaults_path():
+    """The shipped defaults this copy may read, and no other.
+
+    Installed, that is the plugin's own directory; in a checkout, the tree it
+    sits in. The installed command's own neighbourhood (~/.local/config) is
+    never consulted, since nothing of ours lives there.
+    """
+    here = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
+    if here == os.path.realpath(mfs.user_path(".local", "bin")):
+        return mfs.user_path(".config", "omarchy", "plugins", "hriddho.mullion",
+                             "config", "mullion.conf")
+    return os.path.join(os.path.dirname(here), "config", "mullion.conf")
 
 # Keys whose change needs the app window-button sweep re-run.
 APP_BUTTON_KEYS = {"hide_app_window_buttons"}
@@ -65,36 +108,48 @@ def parse(text):
     return values
 
 
-def current_text(dirfd):
-    """The settings file as it stands, creating it from defaults if absent."""
+def current_text(dirfd, create):
+    """The settings file as it stands, or the shipped defaults if absent.
+
+    Only a write creates the file; --list and --get read without changing
+    anything.
+    """
     text = mfs.read_text_at(dirfd, CONF_NAME, missing_ok=True)
     if text is not None:
         return text
-    source = os.path.normpath(DEFAULTS)
-    if os.path.isfile(source):
-        with open(source, "r", encoding="utf-8") as handle:
-            text = handle.read()
-    else:
+    try:
+        text = mfs.read_source(defaults_path()).decode("utf-8")
+    except (mfs.MullionError, OSError, UnicodeDecodeError):
+        # No defaults to copy is not an error: every key has a built-in default.
         text = ""
-    mfs.write_atomic(dirfd, CONF_NAME, text, mode=0o644)
+    if create:
+        mfs.write_atomic(dirfd, CONF_NAME, text, mode=0o644, keep_mode=False)
     return text
 
 
 def rewrite(text, updates):
-    """Replace the values in place, keeping comments and key order intact."""
-    remaining = dict(updates)
+    """Set each key once, keeping comments and key order intact.
+
+    The first occurrence of a key takes the new value and any later duplicate
+    is dropped: every reader takes the last occurrence, so a stale duplicate
+    left further down would silently override the change.
+    """
+    written = set()
     out = []
     for line in text.splitlines():
         stripped = line.strip()
         if stripped and not stripped.startswith("#") and "=" in stripped:
             key = stripped.split("=", 1)[0].strip()
-            if key in remaining:
-                out.append("%s = %s" % (key, remaining.pop(key)))
+            if key in updates:
+                if key not in written:
+                    out.append("%s = %s" % (key, updates[key]))
+                    written.add(key)
                 continue
         out.append(line)
     # Anything not already present is appended rather than silently dropped.
-    for key, value in remaining.items():
-        out.append("%s = %s" % (key, value))
+    for key, value in updates.items():
+        if key not in written:
+            out.append("%s = %s" % (key, value))
     return "\n".join(out) + "\n"
 
 
@@ -107,8 +162,11 @@ def apply(changed):
         here = os.path.dirname(os.path.abspath(__file__))
         local = os.path.join(here, "use-system-titlebars")
         try:
-            sweep = local if os.path.isfile(local) else mfs.helper("use-system-titlebars")
-        except mfs.MullionError:
+            sweep = (mfs.owned_file(local) if os.path.lexists(local)
+                     else mfs.helper("use-system-titlebars"))
+        except mfs.MullionError as exc:
+            print("mullion-set: not re-running the window-button sweep: %s" % exc,
+                  file=sys.stderr)
             return
         mfs.run([sweep])
 
@@ -121,12 +179,12 @@ def main():
     dirfd = mfs.owned_dir(CONF_DIR, create=True, mode=0o755)
     try:
         if args[0] == "--list":
-            for key, value in parse(current_text(dirfd)).items():
+            for key, value in parse(current_text(dirfd, False)).items():
                 print("%s=%s" % (key, value))
             return 0
 
         if args[0] == "--get":
-            values = parse(current_text(dirfd))
+            values = parse(current_text(dirfd, False))
             print(values.get(args[1], "") if len(args) > 1 else "")
             return 0
 
@@ -144,9 +202,9 @@ def main():
                 if key not in updates:
                     updates[key] = mfs.require_conf_pair(key, str(value))[1]
 
-        text = rewrite(current_text(dirfd), updates)
+        text = rewrite(current_text(dirfd, True), updates)
         mfs.write_atomic(dirfd, CONF_NAME, text, mode=0o644)
-    except mfs.MullionError as exc:
+    except (mfs.MullionError, OSError) as exc:
         sys.exit("mullion-set: %s" % exc)
     finally:
         os.close(dirfd)

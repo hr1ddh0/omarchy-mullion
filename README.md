@@ -64,7 +64,9 @@ below runs when **you** click the setup icon or run `./install.sh`, in a visible
 terminal.
 
 **No sudo or pkexec is required, and it never asks for a password.** Everything lands in your
-own home directory.
+own home directory. To make the title bar follow your theme it re-renders the current theme's
+templates in Omarchy's headless mode, which changes no wallpaper, restarts nothing and writes no
+system-wide browser policy.
 
 | What | Where | Why |
 | --- | --- | --- |
@@ -84,64 +86,126 @@ leaves your settings file in place.
 
 ## Supply chain
 
-This plugin fetches code from the internet and compiles it, so what it will and
-will not run is worth stating exactly.
+This plugin fetches code from the internet, compiles a native Hyprland plugin,
+and edits your compositor and application configuration, so what it will and
+will not do is worth stating exactly.
 
-**Everything fetched is pinned.** Two things are downloaded, each at an exact
-commit written into this repository, never at a branch:
+### Fetched inputs are pinned and verified file by file
 
-| Input | Pinned to | Anchored by |
+| Input | Pinned to | Verified by |
 | --- | --- | --- |
-| `hyprwm/hyprland-plugins` (hyprbars) | `7644cec`, in `bin/rebuild-hyprbars` | Must be the commit upstream's `v0.56.0` tag points at, or the build stops |
-| `gardnmi/omarchy-minimize` | `5c29836`, in `install.sh` | Must pass Omarchy's `omarchy-plugin-validate` and declare the expected plugin id |
+| `hyprwm/hyprland-plugins` (hyprbars) | `7644cec`, in `bin/rebuild-hyprbars` | `patches/SOURCES.sha256`: every file in the source directory, `Makefile` included, before and after patching |
+| `gardnmi/omarchy-minimize` | `5c29836`, in `install.sh` | `deps/omarchy-minimize.sha256`: every file of the plugin, plus Omarchy's own `omarchy-git-url-check` and `omarchy-plugin-validate` |
 
-**The compiled source is attested.** `patches/SOURCES.sha256` records a SHA-256
-for every file the build touches, twice: as upstream ships it, and again after
-Mullion's four patches are applied. `rebuild-hyprbars` checks both. The commit
-fixes what is fetched, the first set of digests proves the fetch was not
-tampered with, the patches are deterministic text substitutions, and the second
-set proves the exact bytes handed to the compiler are the ones this release was
-reviewed with. Regenerate them with `./patches/verify-pins regenerate <commit>`.
+git runs with no user or system configuration (no URL rewrites, credential
+helpers, filters or fsmonitor), https only, hooks disabled, replace refs
+ignored, and every received object checked, and only ever on a repository the
+script has just cloned itself. A changed byte, a missing file, an added file,
+a link or a subdirectory stops the install. The pinned hyprbars commit must
+also be what upstream's `v0.56.0` tag names; that is a consistency check, and
+the commit plus the digests are what actually protect the build.
 
-**Patches fail closed.** All four must apply. They used to be skipped with a
-note when upstream drifted, which made sense when the source floated; against a
-pinned commit a mismatch means the tree is not what we think it is, so the build
-stops instead. Nothing is replaced when it does: your existing title bars keep
-working, and `hyprland.lua` loads the plugin inside a `pcall`, so a failed or
-missing build can never block login.
+omarchy-minimize is installed without its git metadata, so `omarchy plugin
+update` skips it and cannot move it off the reviewed version. An existing copy
+is verified by its files, never by asking git, before anything else changes;
+one that does not match is only replaced after you confirm, and your copy is
+kept aside. The bar widget re-checks it on every health probe.
 
-**The build environment is controlled.** The compiler runs under `env -i` with
-a fixed search path, so an inherited `CXXFLAGS`, `LD_PRELOAD` or
-`PKG_CONFIG_PATH` cannot reach into the compile or redirect which Hyprland
-headers are used.
+### The build is controlled and its result is recorded
 
-**The result is recorded.** A Hyprland plugin is compiled here, against this
-machine's Hyprland, so no publisher can hand you a digest for the binary you end
-up with. Instead every input that determined it is written to
-`~/.local/share/mullion/build-record.json`: both commits, the release tag, the
-compiler version, the header version, and the SHA-256 of the `.so` that was
-installed.
+- The installed Hyprland headers must be the same Hyprland commit that is
+  running, or the build stops (an upgrade without a re-login would otherwise
+  build for the wrong Hyprland).
+- All four patches must apply; a mismatch stops the build rather than being
+  skipped. Nothing is replaced when a build stops, and `hyprland.lua` loads the
+  plugin inside a `pcall`, so a failed build can never block login.
+- The compiler runs under `env -i` with `PATH=/usr/bin`, with nothing in
+  `/usr/local/include` to shadow the packaged headers, and with upstream's
+  `--no-gnu-unique`, so Hyprland can truly unload an old build. The result must
+  have no GNU-unique symbols and no embedded library search path.
+- A plugin compiled against your own Hyprland cannot come with a publisher's
+  digest, so every input that determined it is written to
+  `~/.local/share/mullion/build-record.json`: both commits, the header commit,
+  the exact `gcc`, `binutils`, `hyprland` and library package versions, the
+  build flags, the libraries it links, and the SHA-256 and inode of the
+  installed `.so`. The digest is re-checked immediately before Hyprland loads
+  it.
+- The bar widget re-checks all of this on every probe: that the file on disk
+  still matches the record, and that the image Hyprland actually has mapped
+  (from `/proc`) is that very file rather than an older or replaced one. A
+  mismatch is shown as a warning with a one-click rebuild.
 
-**Executables are not resolved from `$PATH`.** These helpers run from the
-compositor, from a bar widget and from an installer, none of which control the
-environment they inherit. Every external command is resolved to an absolute path
-in a root-owned, non-world-writable system directory; Mullion's own commands are
-required to be owned by you and not symlinks. The Hyprland bindings and the
-`hyprbars` hooks call these by absolute path too.
+The toolchain itself is your distribution's packaged compiler. It cannot be
+pinned on a rolling distribution, and it has to match your installed Hyprland
+anyway, so it is attested by recording exact package versions instead.
 
-**Writes are descriptor-safe and atomic.** Every file this plugin creates or
-edits, including other applications' settings, is written through a directory
-descriptor whose ownership was verified and then held, opened without following
-links, and put in place with a rename. A component swapped for a symlink
-between the check and the write cannot redirect it, and no reader ever sees a
-half-written config. Anything derived from a user argument, an environment
-variable or a settings file is validated before it becomes part of a path or a
-dispatched command.
+### Nothing is taken from the environment
 
-One interaction worth knowing: `omarchy plugin update` fast-forwards a plugin to
-its remote's latest commit, so running it on `io.github.gardnmi.window-shelf`
-moves that dependency off the pin recorded here. Re-running `./install.sh` does
-not undo that; remove the plugin first if you want the pin back.
+These scripts run from the compositor, a bar widget and an installer, none of
+which control the environment they inherit.
+
+- The shell scripts start with `bash -p` and then re-execute themselves under
+  `env -i` with an allowlisted, value-checked environment, unless their real
+  environment (read from `/proc`) already is exactly that. Exported shell
+  functions, `BASH_ENV`, `LD_PRELOAD`, `TMPDIR`, module search paths and
+  everything else never reach Omarchy's tools, git, make or the compiler.
+- The Python helpers start with `python3 -I`, and build every child's
+  environment from the same allowlist.
+- Executables are taken only from `/usr/bin`, and only when root owns both the
+  directory and the file and nobody else can write to it.
+- The home directory is read from the password database; `OMARCHY_PATH` is
+  fixed to the packaged `/usr/share/omarchy`; the runtime directory must be
+  `/run/user/<uid>` with mode 0700.
+- An installed helper loads only the installed copy of its safety library, a
+  checkout only its own, each required to be a regular file owned by you.
+- The Hyprland bindings, title-bar buttons and compiled drag hooks call by
+  absolute path; the drag hooks look your home directory up from the password
+  database rather than trusting `$HOME`. The bar widget starts every process
+  with a cleared, allowlisted environment and passes arguments as an array,
+  shell-quoting each one for Omarchy's terminal launcher.
+
+### Writes are descriptor-safe and atomic
+
+Every config file, command, library, record and plugin file Mullion creates,
+edits, renames or removes, including other applications' settings, goes
+through `bin/mullionlib.py`. A path is walked from `/` one component at a
+time: symlinks are resolved by the library itself so each link's owner is
+checked (yours and root's are followed, anyone else's is refused, and a link
+target containing `..` is refused), every directory is opened with
+`O_NOFOLLOW` relative to its verified parent, its owner and permissions
+checked, and its descriptor held. Files are written to a fresh `O_EXCL`
+temporary beside the target and renamed into place, keeping the existing
+file's permissions, with the original kept the first time a file is changed.
+Directories are created, renamed and removed through the same descriptors,
+recursively and without ever following a link. System defaults are read only
+through directories and files root owns. Mullion's own library is executed
+from bytes read and verified through a descriptor, never from a bytecode cache.
+
+`hyprland.lua` is edited by whole uncommented lines and exact blocks only, and
+every file the installer will edit is checked before it changes anything, so
+it cannot stop half-applied; any write that fails stops the install. Settings
+keys and values are checked against a schema, and window addresses, workspace
+names, plugin ids and paths are validated before they reach a dispatch, a
+config file or a command.
+
+### What stays outside Mullion's control
+
+Stated so nothing here is overclaimed:
+
+- `git clone` writes by path, into a private `0700` staging directory that
+  Mullion created through a verified descriptor and that nobody else can
+  enter; the result is verified file by file before it is moved into place.
+- The reload-once marker in `mullion.lua` is written by a shell redirect, into
+  the owner-only `/run/user/<uid>` directory.
+- Omarchy's floating-terminal launcher, which the bar widget uses so you can
+  watch the install, runs with the session's environment; the widget hands it
+  an allowlisted environment and a quoted absolute `bash -p` command, and
+  Mullion's scripts clean their own environment before doing anything.
+- At login, `hyprland.lua` loads the plugin file from your home directory
+  without hashing it; the bar widget verifies it against the build record
+  afterwards.
+- omarchy-minimize is third-party code, pinned and reviewed; upstream, its
+  widget calls `hyprctl` by name.
 
 ## Settings
 
@@ -197,7 +261,7 @@ use-system-titlebars --check   # report only
 
 - Omarchy 4.x with the Quickshell shell (Quickshell >= 0.3.0)
 - Hyprland in **Lua** configuration mode
-- `g++`, `git`, `pkg-config` for building the title-bar plugin
+- `g++`, `make`, `git`, `pkg-config`, `readelf` from the Arch packages in `/usr/bin` for building the title-bar plugin
 
 ## Keys
 
@@ -228,7 +292,9 @@ rebuild-hyprbars
 ```
 
 If this release has no pin for your Hyprland yet, `rebuild-hyprbars` says so
-and stops rather than building unreviewed code.
+and stops rather than building unreviewed code. After `omarchy plugin update`,
+the bar icon asks you to finish the update, which re-runs `install.sh` so the
+new pins and digests are installed.
 ## A note on `hyprctl dispatch`
 
 Omarchy configures Hyprland in Lua, so `hyprctl dispatch` takes a Lua

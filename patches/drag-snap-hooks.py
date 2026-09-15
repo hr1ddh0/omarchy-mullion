@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -I
 """Drive drag-to-edge snapping from hyprbars' own title-bar drags.
 
 hyprbars listens to pointer events itself and moves the window when you drag
@@ -15,7 +15,13 @@ Usage: drag-snap-hooks.py <hyprbars source dir>
 import os
 import sys
 
-SNAP = '$HOME/.local/bin/mullion-drag-snap'
+# The command hyprbars hands to Hyprland's exec, which runs it through /bin/sh
+# with the compositor's environment. The home directory is looked up from the
+# password database inside that shell instead of taken from $HOME, every
+# program is named by absolute path, and the result is quoted, so neither the
+# environment nor a space or glob character in a path can change what runs.
+SNAP = ('h=$(/usr/bin/getent passwd \\"$(/usr/bin/id -u)\\" | /usr/bin/cut -d: -f6)'
+        ' && exec \\"$h/.local/bin/mullion-drag-snap\\"')
 
 EDITS = [
     # Drag begins.

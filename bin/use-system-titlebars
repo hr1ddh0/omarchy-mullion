@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -I
 """Stop applications drawing their own window buttons.
 
 With title bars from this plugin, an app that also draws its own frame gives
@@ -23,26 +23,60 @@ With no flag it follows hide_app_window_buttons in
 by writing that key and re-running this.
 
 This edits other applications' configuration, so every write goes through a
-verified directory descriptor and an atomic rename, and no file is ever opened
-through a link. A browser profile is a place a lot of things write; being
-careful about what we land on there matters more than usual.
+verified directory descriptor and an atomic rename, no file is ever opened
+through a link, and the first time a file is changed its original is kept
+beside it. The GTK values found before the first change are recorded, so
+--revert puts back what was there rather than guessing.
 """
 import importlib.util
 import json
 import os
+import re
 import sys
+
+# Nothing Mullion runs is loaded from, or leaves behind, a bytecode cache.
+sys.dont_write_bytecode = True
 
 
 def _load_lib():
-    here = os.path.dirname(os.path.abspath(__file__))
-    for candidate in (os.path.join(here, "mullionlib.py"),
-                      os.path.expanduser("~/.local/share/mullion/lib/mullionlib.py")):
-        if os.path.isfile(candidate):
-            spec = importlib.util.spec_from_file_location("mullionlib", candidate)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            return module
-    sys.exit("use-system-titlebars: mullionlib.py not found; reinstall Mullion")
+    """Load the shared safety library from the one place this copy may use.
+
+    An installed command loads only the installed library, and a copy run from
+    a checkout only the one beside it, so a file dropped on some other path can
+    never be imported in its place. The home directory comes from the password
+    database rather than $HOME, and the file must be a regular file owned by
+    the user and writable by nobody else.
+    """
+    import pwd
+    import stat
+    import types
+    name = os.path.basename(__file__)
+    here = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
+    home = pwd.getpwuid(os.getuid()).pw_dir
+    if here == os.path.realpath(os.path.join(home, ".local", "bin")):
+        path = os.path.join(home, ".local", "share", "mullion", "lib", "mullionlib.py")
+    else:
+        path = os.path.join(here, "mullionlib.py")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        sys.exit("%s: %s is missing or is a link; reinstall Mullion" % (name, path))
+    with os.fdopen(fd, "rb") as handle:
+        st = os.fstat(handle.fileno())
+        if (not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid()
+                or st.st_mode & (stat.S_IWGRP | stat.S_IWOTH)):
+            sys.exit("%s: refusing to load %s: not a regular file owned solely by you"
+                     % (name, path))
+        source = handle.read()
+    # Run from the bytes just verified, never from a bytecode cache beside them.
+    module = types.ModuleType("mullionlib")
+    module.__file__ = path
+    exec(compile(source, path, "exec"), module.__dict__)
+    try:
+        module.require_home()
+    except module.MullionError as exc:
+        sys.exit("%s: %s" % (name, exc))
+    return module
 
 
 mfs = _load_lib()
@@ -56,6 +90,46 @@ BROWSERS = {
     "microsoft-edge": ("msedge", "microsoft-edge"),
     "vivaldi": ("vivaldi-bin", "vivaldi"),
 }
+
+# Suffix of the copy kept the first time Mullion changes a file.
+ORIGINAL = "mullion-original"
+
+# Where the values found before the first change are recorded.
+STATE_DIR = mfs.user_path(".local", "share", "mullion", "state")
+STATE_NAME = "app-buttons.json"
+
+# Nothing on the left, nothing on the right: header bars keep their app content
+# but lose minimise/maximise/close, which the title bar now provides.
+GTK_LAYOUT = ":"
+GTK_SCHEMA = "org.gnome.desktop.wm.preferences"
+GTK_KEY = "gtk-decoration-layout"
+# A button-layout value as GTK and gsettings spell it; anything else read back
+# from a file or a previous run is never written anywhere.
+LAYOUT_VALUE = re.compile(r"^[A-Za-z0-9_,:-]{0,128}$")
+
+
+def load_state():
+    try:
+        fd = mfs.owned_dir(STATE_DIR)
+    except mfs.MullionError:
+        return {}
+    try:
+        raw = mfs.read_text_at(fd, STATE_NAME, missing_ok=True)
+        value = json.loads(raw) if raw else {}
+        return value if isinstance(value, dict) else {}
+    except (mfs.MullionError, ValueError):
+        return {}
+    finally:
+        os.close(fd)
+
+
+def save_state(state):
+    fd = mfs.owned_dir(STATE_DIR, create=True, mode=0o700)
+    try:
+        mfs.write_atomic(fd, STATE_NAME, json.dumps(state, indent=2, sort_keys=True) + "\n",
+                         mode=0o600, keep_mode=False)
+    finally:
+        os.close(fd)
 
 
 def running(names):
@@ -74,7 +148,7 @@ def profiles(config_dir):
     for entry in sorted(os.listdir(config_dir)):
         if entry == "Default" or entry.startswith("Profile "):
             path = os.path.join(config_dir, entry, "Preferences")
-            if os.path.isfile(path):
+            if os.path.isfile(path) and not os.path.islink(path):
                 found.append(path)
     return found
 
@@ -87,21 +161,22 @@ def apply(path, check, hide):
         print("    skipping %s (%s)" % (path, exc))
         return False
     try:
-        raw = mfs.read_text_at(fd, name, missing_ok=True)
-        if raw is None:
+        try:
+            raw = mfs.read_text_at(fd, name, missing_ok=True)
+            prefs = json.loads(raw) if raw is not None else None
+        except (mfs.MullionError, ValueError) as exc:
+            print("    could not read %s (%s)" % (path, exc))
             return False
-        prefs = json.loads(raw)
-    except (mfs.MullionError, ValueError) as exc:
-        print("    could not read %s (%s)" % (path, exc))
-        os.close(fd)
-        return False
+        if not isinstance(prefs, dict):
+            return False
 
-    try:
+        browser = prefs.get("browser")
+        if not isinstance(browser, dict):
+            browser = {}
         # custom_chrome_frame is the browser drawing its own frame, so hiding
         # its buttons means turning it off.
         wanted = not hide
-        current = prefs.get("browser", {}).get("custom_chrome_frame")
-        if current == wanted:
+        if browser.get("custom_chrome_frame") == wanted:
             print("    already %s" % ("using the system title bar" if hide
                                       else "drawing its own buttons"))
             return False
@@ -109,100 +184,195 @@ def apply(path, check, hide):
             print("    would turn its own window frame %s" % ("off" if hide else "on"))
             return True
 
-        mfs.backup_at(fd, name, "bak")
-        prefs.setdefault("browser", {})["custom_chrome_frame"] = wanted
+        mfs.backup_at(fd, name, ORIGINAL, keep_existing=True)
+        browser["custom_chrome_frame"] = wanted
+        prefs["browser"] = browser
         mfs.write_atomic(fd, name, json.dumps(prefs, separators=(",", ":")), mode=0o600)
-        print("    done (previous file kept as Preferences.bak)")
+        print("    done (the original is kept as Preferences.%s)" % ORIGINAL)
         return True
+    except mfs.MullionError as exc:
+        print("    could not update %s (%s)" % (path, exc))
+        return False
     finally:
         os.close(fd)
 
 
-# Nothing on the left, nothing on the right: header bars keep their app content
-# but lose minimise/maximise/close, which the title bar now provides.
-GTK_LAYOUT = ":"
-# What GNOME ships, restored when the user asks for the buttons back.
-GTK_DEFAULT_LAYOUT = "appmenu:close"
+# ---------------------------------------------------------------------------
+# GTK
+
+def ini_get(text, section, key):
+    """The value of key inside [section], or None when it is not set there."""
+    current = None
+    value = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            current = stripped[1:-1].strip()
+            continue
+        if current == section and "=" in stripped and not stripped.startswith(("#", ";")):
+            name, _, raw = stripped.partition("=")
+            if name.strip() == key:
+                value = raw.strip()
+    return value
 
 
-def gtk_buttons(config, check, hide):
+def ini_set(text, section, key, value):
+    """text with key set to value inside [section], or removed when value is
+    None. Only that key in that section is touched; every other line is kept."""
+    out = []
+    current = None
+    seen_section = False
+    written = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            if current == section and not written and value is not None:
+                out.append("%s=%s" % (key, value))
+                written = True
+            current = stripped[1:-1].strip()
+            seen_section = seen_section or current == section
+            out.append(line)
+            continue
+        if current == section and "=" in stripped and not stripped.startswith(("#", ";")):
+            if stripped.partition("=")[0].strip() == key:
+                if value is not None and not written:
+                    out.append("%s=%s" % (key, value))
+                    written = True
+                continue
+        out.append(line)
+    if value is not None and not written:
+        if current == section:
+            out.append("%s=%s" % (key, value))
+        elif not seen_section:
+            if out and out[-1].strip():
+                out.append("")
+            out += ["[%s]" % section, "%s=%s" % (key, value)]
+    return "\n".join(out) + ("\n" if out else "")
+
+
+def gtk_buttons(config, check, hide, state):
     """Drop the close button from GTK/GNOME header bars, or restore it."""
     print("  GTK / GNOME header bars")
     changed = False
 
-    schema = "org.gnome.desktop.wm.preferences"
     try:
         gsettings = mfs.tool("gsettings")
-        current = mfs.run([gsettings, "get", schema, "button-layout"], timeout=5)
+        current = mfs.run([gsettings, "get", GTK_SCHEMA, "button-layout"], timeout=5)
         value = current.stdout.strip().strip("'\"")
-        target = GTK_LAYOUT if hide else GTK_DEFAULT_LAYOUT
-        if current.returncode != 0:
+        if current.returncode != 0 or not LAYOUT_VALUE.match(value):
             print("    gsettings schema unavailable; skipping")
-        elif value == target:
-            print("    already has no header-bar buttons")
-        elif check:
-            print("    would change button-layout from %r to %r" % (value, target))
-            changed = True
+        elif hide:
+            if value == GTK_LAYOUT:
+                print("    already has no header-bar buttons")
+            elif check:
+                print("    would change button-layout from %r to %r" % (value, GTK_LAYOUT))
+                changed = True
+            else:
+                state.setdefault("gtk_button_layout", value)
+                mfs.run([gsettings, "set", GTK_SCHEMA, "button-layout", GTK_LAYOUT], timeout=5)
+                print("    button-layout %r -> %r" % (value, GTK_LAYOUT))
+                changed = True
         else:
-            mfs.run([gsettings, "set", schema, "button-layout", target], timeout=5)
-            print("    button-layout %r -> %r" % (value, target))
-            print("    (restore with: gsettings reset %s button-layout)" % schema)
-            changed = True
+            original = state.get("gtk_button_layout")
+            if isinstance(original, str) and LAYOUT_VALUE.match(original):
+                if value == original:
+                    print("    already has its original buttons")
+                elif check:
+                    print("    would restore button-layout %r" % original)
+                    changed = True
+                else:
+                    mfs.run([gsettings, "set", GTK_SCHEMA, "button-layout", original], timeout=5)
+                    print("    restored button-layout %r" % original)
+                    changed = True
+            elif value == GTK_LAYOUT:
+                if check:
+                    print("    would reset button-layout to the desktop default")
+                else:
+                    mfs.run([gsettings, "reset", GTK_SCHEMA, "button-layout"], timeout=5)
+                    print("    reset button-layout to the desktop default")
+                changed = True
+            else:
+                print("    buttons are not hidden; nothing to restore")
     except Exception as exc:
-        print("    could not read gsettings (%s)" % exc)
+        print("    could not use gsettings (%s)" % exc)
 
-    # Some toolkits read the ini rather than gsettings, so set both.
+    # Some toolkits read the ini rather than gsettings, so handle both.
+    originals = state.setdefault("ini", {})
     for version in ("gtk-3.0", "gtk-4.0"):
-        changed |= write_ini_setting(os.path.join(config, version), "settings.ini",
-                                     "gtk-decoration-layout",
-                                     GTK_LAYOUT if hide else GTK_DEFAULT_LAYOUT, check)
+        changed |= ini_setting(os.path.join(config, version), version, check, hide, originals)
     return changed
 
 
-def write_ini_setting(directory, name, key, value, check):
-    """Set one key under [Settings], leaving everything else intact."""
-    line = "%s=%s" % (key, value)
-    try:
-        fd = mfs.owned_dir(directory, create=not check, mode=0o755)
-    except mfs.MullionError as exc:
-        print("    skipping %s (%s)" % (os.path.join(directory, name), exc))
+def ini_setting(directory, version, check, hide, originals):
+    """Set or restore gtk-decoration-layout under [Settings] in one ini file."""
+    path = os.path.join(directory, "settings.ini")
+    exists = os.path.isdir(directory)
+    if not hide and not exists:
+        # Nothing was ever written there, so there is nothing to restore, and
+        # a revert must not create directories that were never present.
         return False
+
+    fd = None
+    name = "settings.ini"
     try:
-        existing = mfs.read_text_at(fd, name, missing_ok=True) or ""
-        if line in existing:
+        if exists:
+            fd, name = mfs.config_target(directory, "settings.ini")
+        existing = (mfs.read_text_at(fd, name, missing_ok=True) or "") if fd is not None else ""
+        current = ini_get(existing, "Settings", GTK_KEY)
+
+        if hide:
+            target = GTK_LAYOUT
+        elif version in originals:
+            saved = originals[version]
+            if saved is not None and not (isinstance(saved, str) and LAYOUT_VALUE.match(saved)):
+                return False
+            target = saved
+        elif current == GTK_LAYOUT:
+            # No record of what was there, but this is our value: remove it so
+            # the toolkit's own default applies again.
+            target = None
+        else:
+            return False
+
+        if current == target:
             return False
         if check:
-            print("    would set %s in %s" % (line, os.path.join(directory, name)))
+            print("    would %s %s in %s" % ("set" if target is not None else "remove",
+                                             GTK_KEY, path))
             return True
 
+        if fd is None:
+            fd = mfs.owned_dir(directory, create=True, mode=0o755)
+            name = "settings.ini"
+        if hide:
+            originals.setdefault(version, current)
         if existing:
-            mfs.backup_at(fd, name, "bak")
-        lines = [l for l in existing.splitlines() if not l.strip().startswith(key)]
-        if "[Settings]" not in existing:
-            lines = ["[Settings]"] + lines
-        out = []
-        for entry in lines:
-            out.append(entry)
-            if entry.strip() == "[Settings]":
-                out.append(line)
-        mfs.write_atomic(fd, name, "\n".join(out) + "\n", mode=0o644)
-        print("    set %s in %s" % (line, os.path.join(directory, name)))
+            mfs.backup_at(fd, name, ORIGINAL, keep_existing=True)
+        mfs.write_atomic(fd, name, ini_set(existing, "Settings", GTK_KEY, target), mode=0o644)
+        if target is None:
+            print("    removed %s from %s" % (GTK_KEY, path))
+        else:
+            print("    set %s=%s in %s" % (GTK_KEY, target, path))
         return True
     except mfs.MullionError as exc:
-        print("    could not write %s (%s)" % (os.path.join(directory, name), exc))
+        print("    could not update %s (%s)" % (path, exc))
         return False
     finally:
-        os.close(fd)
+        if fd is not None:
+            os.close(fd)
 
+
+# ---------------------------------------------------------------------------
+# Firefox
 
 def firefox(check, hide):
     """Stop Firefox drawing its own title bar."""
-    home = os.path.expanduser("~")
+    home = mfs.real_home()
     roots = [os.path.join(home, ".mozilla", "firefox"),
              os.path.join(home, ".librewolf")]
     pref = 'user_pref("browser.tabs.inTitlebar", %d);' % (0 if hide else 1)
-    found = False
     changed = False
+    announced = False
 
     for root in roots:
         if not os.path.isdir(root):
@@ -211,9 +381,9 @@ def firefox(check, hide):
             profile = os.path.join(root, entry)
             if not os.path.isfile(os.path.join(profile, "prefs.js")):
                 continue
-            found = True
-            if not changed:
+            if not announced:
                 print("  Firefox")
+                announced = True
             try:
                 fd = mfs.owned_dir(profile)
             except mfs.MullionError as exc:
@@ -221,39 +391,38 @@ def firefox(check, hide):
                 continue
             try:
                 existing = mfs.read_text_at(fd, "user.js", missing_ok=True) or ""
-                if pref in existing:
+                lines = existing.splitlines()
+                if pref in (line.strip() for line in lines):
                     print("    %s already set" % entry)
                     continue
-                # Drop any previous setting of the same pref, then add ours, as
-                # one write rather than a truncate followed by an append.
-                kept = "\n".join(l for l in existing.splitlines()
-                                 if "browser.tabs.inTitlebar" not in l)
                 if check:
                     print("    would set %s for %s" % (pref, entry))
                     changed = True
                     continue
+                # Any previous setting of the same pref is replaced by ours, as
+                # one write rather than a truncate followed by an append.
+                kept = [line for line in lines if "browser.tabs.inTitlebar" not in line]
                 if existing:
-                    mfs.backup_at(fd, "user.js", "bak")
-                if kept and not kept.endswith("\n"):
-                    kept += "\n"
-                mfs.write_atomic(fd, "user.js", kept + pref + "\n", mode=0o644)
+                    mfs.backup_at(fd, "user.js", ORIGINAL, keep_existing=True)
+                mfs.write_atomic(fd, "user.js", "\n".join(kept + [pref]) + "\n", mode=0o644)
                 print("    set %s for %s" % (pref, entry))
                 changed = True
             except mfs.MullionError as exc:
                 print("    could not write user.js for %s (%s)" % (entry, exc))
             finally:
                 os.close(fd)
-    return changed if found else False
+    return changed
 
 
 def wanted_state():
     """hide_app_window_buttons from the shared settings file."""
-    path = os.path.expanduser("~/.config/omarchy/mullion.conf")
+    path = mfs.user_path(".config", "omarchy", "mullion.conf")
     try:
-        for line in open(path):
-            key, _, raw = line.partition("=")
-            if key.strip() == "hide_app_window_buttons":
-                return raw.strip() != "false"
+        with open(path) as handle:
+            for line in handle:
+                key, _, raw = line.partition("=")
+                if key.strip() == "hide_app_window_buttons":
+                    return raw.strip() != "false"
     except OSError:
         pass
     return True
@@ -269,6 +438,7 @@ def main():
         config = mfs.require_env_dir("XDG_CONFIG_HOME", "~/.config")
     except mfs.MullionError as exc:
         sys.exit("use-system-titlebars: %s" % exc)
+    state = load_state()
     touched = False
     seen = False
 
@@ -288,13 +458,17 @@ def main():
     if not seen:
         print("  no Chromium-family browser configured")
 
-    touched |= gtk_buttons(config, check, hide)
+    touched |= gtk_buttons(config, check, hide, state)
     touched |= firefox(check, hide)
 
     if touched and not check:
+        try:
+            save_state(state)
+        except mfs.MullionError as exc:
+            print("\nCould not record the original values (%s)." % exc)
         print("\nRestart the apps above to pick this up.")
     elif not touched:
-        print("\nNothing to change; no app is drawing its own window buttons.")
+        print("\nNothing to change.")
     return 0
 
 

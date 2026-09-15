@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -I
 """Snap the focused window to a half / full / centered region of its monitor.
 
     mullion-snap left | right | top | bottom | full | center [window-address]
@@ -20,17 +20,49 @@ import os
 import subprocess
 import sys
 
+# Nothing Mullion runs is loaded from, or leaves behind, a bytecode cache.
+sys.dont_write_bytecode = True
+
 
 def _load_lib():
-    here = os.path.dirname(os.path.abspath(__file__))
-    for candidate in (os.path.join(here, "mullionlib.py"),
-                      os.path.expanduser("~/.local/share/mullion/lib/mullionlib.py")):
-        if os.path.isfile(candidate):
-            spec = importlib.util.spec_from_file_location("mullionlib", candidate)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            return module
-    sys.exit("mullion-snap: mullionlib.py not found; reinstall Mullion")
+    """Load the shared safety library from the one place this copy may use.
+
+    An installed command loads only the installed library, and a copy run from
+    a checkout only the one beside it, so a file dropped on some other path can
+    never be imported in its place. The home directory comes from the password
+    database rather than $HOME, and the file must be a regular file owned by
+    the user and writable by nobody else.
+    """
+    import pwd
+    import stat
+    import types
+    name = os.path.basename(__file__)
+    here = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
+    home = pwd.getpwuid(os.getuid()).pw_dir
+    if here == os.path.realpath(os.path.join(home, ".local", "bin")):
+        path = os.path.join(home, ".local", "share", "mullion", "lib", "mullionlib.py")
+    else:
+        path = os.path.join(here, "mullionlib.py")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        sys.exit("%s: %s is missing or is a link; reinstall Mullion" % (name, path))
+    with os.fdopen(fd, "rb") as handle:
+        st = os.fstat(handle.fileno())
+        if (not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid()
+                or st.st_mode & (stat.S_IWGRP | stat.S_IWOTH)):
+            sys.exit("%s: refusing to load %s: not a regular file owned solely by you"
+                     % (name, path))
+        source = handle.read()
+    # Run from the bytes just verified, never from a bytecode cache beside them.
+    module = types.ModuleType("mullionlib")
+    module.__file__ = path
+    exec(compile(source, path, "exec"), module.__dict__)
+    try:
+        module.require_home()
+    except module.MullionError as exc:
+        sys.exit("%s: %s" % (name, exc))
+    return module
 
 
 mfs = _load_lib()

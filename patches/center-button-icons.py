@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -I
 """Centre hyprbars' button glyphs on their dots.
 
 hyprbars draws the coloured circle into a box it rounds to whole pixels, but

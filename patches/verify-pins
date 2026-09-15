@@ -1,22 +1,25 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -I
 """Owner of patches/SOURCES.sha256: check build inputs, or regenerate them.
 
 rebuild-hyprbars calls this twice per build, once before the patches are
-applied and once after, so the exact source handed to the compiler is known to
-match what this release was reviewed against. A maintainer adding support for a
-new Hyprland version calls --regenerate to produce the section to paste in.
+applied and once after, so the exact source handed to the compiler, Makefile
+included, is known to match what this release was reviewed against. A
+maintainer adding support for a new Hyprland version calls `regenerate` to
+produce the section to paste in.
 
     verify-pins check pre  <plugins-commit> <hyprbars-source-dir>
     verify-pins check post <plugins-commit> <hyprbars-source-dir>
     verify-pins regenerate <plugins-commit>
 
-`check` is the whole point, so it is deliberately unforgiving: an unknown
-commit, a missing line, an extra file or one digit out of place all fail.
+`check` is deliberately unforgiving. Every entry in the source directory is
+attested, so an unknown commit, a missing file, an added file, a link or a
+subdirectory, or one digit out of place all fail.
 """
 import hashlib
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -27,12 +30,7 @@ UPSTREAM = "https://github.com/hyprwm/hyprland-plugins.git"
 
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 SECTION = re.compile(r"^\[([0-9a-f]{40})\]$")
-ENTRY = re.compile(r"^(pre|post)\s+([0-9a-f]{64})\s+(\S+)$")
-
-# Only these are ever patched, so only these are attested. Listing them rather
-# than digesting the whole tree keeps the manifest readable and makes an
-# unexpected extra file a failure instead of a silent digest change.
-FILES = ("barDeco.cpp", "main.cpp", "globals.hpp")
+ENTRY = re.compile(r"^(pre|post)\s+([0-9a-f]{64})\s+([A-Za-z0-9._-]+)$")
 
 PATCHES = ("center-button-icons.py", "drag-snap-hooks.py",
            "icon-render-room.py", "mirror-button-icons.py")
@@ -47,11 +45,24 @@ def digest(path):
         return hashlib.sha256(handle.read()).hexdigest()
 
 
+def tree(source_dir):
+    """Digest of every entry in the source directory, refusing anything that
+    is not a plain file."""
+    found = {}
+    for entry in sorted(os.listdir(source_dir)):
+        path = os.path.join(source_dir, entry)
+        st = os.lstat(path)
+        if not stat.S_ISREG(st.st_mode):
+            die("%s in the source tree is not a regular file; refusing to build" % entry)
+        found[entry] = digest(path)
+    return found
+
+
 def load(commit):
-    """Every pre/post digest recorded for one pinned commit."""
+    """{"pre": {name: digest}, "post": {...}} recorded for one pinned commit."""
     if not COMMIT.match(commit):
         die("%r is not a 40-character commit" % commit)
-    wanted = {}
+    wanted = {"pre": {}, "post": {}}
     current = None
     with open(MANIFEST, "r", encoding="utf-8") as handle:
         for number, line in enumerate(handle, 1):
@@ -69,37 +80,50 @@ def load(commit):
                 die("%s line %d comes before any [commit] section" % (MANIFEST, number))
             if current == commit:
                 stage, value, name = entry.groups()
-                if name not in FILES:
-                    die("%s names %s, which is not an attested file" % (MANIFEST, name))
-                wanted[(stage, name)] = value
-    if not wanted:
-        die("no digests recorded for %s.\n"
+                if name in wanted[stage]:
+                    die("%s lists %s twice for %s" % (MANIFEST, name, stage))
+                wanted[stage][name] = value
+    if not wanted["pre"] or not wanted["post"]:
+        die("no complete digest set recorded for %s.\n"
             "This Mullion release has not been built against that commit." % commit)
     return wanted
 
 
 def check(stage, commit, source_dir):
-    wanted = load(commit)
-    missing = [name for name in FILES if (stage, name) not in wanted]
-    if missing:
-        die("no %s digest recorded for %s" % (stage, ", ".join(missing)))
+    wanted = load(commit)[stage]
+    got = tree(source_dir)
 
-    bad = []
-    for name in FILES:
-        path = os.path.join(source_dir, name)
-        if not os.path.isfile(path):
-            bad.append("%s is missing" % name)
-            continue
-        got = digest(path)
-        if got != wanted[(stage, name)]:
-            bad.append("%s\n    expected %s\n    got      %s"
-                       % (name, wanted[(stage, name)], got))
-    if bad:
+    problems = []
+    for name in sorted(set(wanted) - set(got)):
+        problems.append("%s is missing" % name)
+    for name in sorted(set(got) - set(wanted)):
+        problems.append("%s is not part of the reviewed tree" % name)
+    for name in sorted(set(wanted) & set(got)):
+        if wanted[name] != got[name]:
+            problems.append("%s\n    expected %s\n    got      %s"
+                            % (name, wanted[name], got[name]))
+    if problems:
         die("the %s-patch sources do not match the pin:\n  %s\n\n"
-            "Nothing was built. The fetched source is not what this Mullion\n"
-            "release was reviewed against, so compiling it is refused."
-            % (stage, "\n  ".join(bad)))
-    print("  %s-patch sources match the pin (%d files)" % (stage, len(FILES)))
+            "Nothing was built. The source is not what this Mullion release\n"
+            "was reviewed against, so compiling it is refused."
+            % (stage, "\n  ".join(problems)))
+    print("  %s-patch sources match the pin (%d files)" % (stage, len(got)))
+
+
+def git(*args):
+    """git with no user or system configuration, https only, no hooks."""
+    env = {"PATH": "/usr/bin", "HOME": tempfile.gettempdir(), "LANG": "C",
+           "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+           "GIT_TERMINAL_PROMPT": "0"}
+    for var in ("https_proxy", "HTTPS_PROXY", "no_proxy", "NO_PROXY"):
+        if os.environ.get(var):
+            env[var] = os.environ[var]
+    subprocess.run(["/usr/bin/git", "-c", "protocol.allow=never",
+                    "-c", "protocol.https.allow=always",
+                    "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
+                    "-c", "transfer.fsckobjects=true", "-c", "fetch.fsckobjects=true",
+                    "-c", "advice.detachedHead=false", *args],
+                   env=env, check=True)
 
 
 def regenerate(commit):
@@ -108,43 +132,31 @@ def regenerate(commit):
         die("%r is not a 40-character commit" % commit)
     work = tempfile.mkdtemp(prefix="mullion-pins.")
     try:
-        tree = os.path.join(work, "hlp")
-        subprocess.run(
-            ["/usr/bin/git", "-c", "transfer.fsckobjects=true",
-             "-c", "fetch.fsckobjects=true", "clone", "--quiet",
-             "--filter=blob:none", "--no-checkout", "--", UPSTREAM, tree],
-            check=True)
-        subprocess.run(["/usr/bin/git", "-C", tree, "checkout", "--quiet",
-                        "--detach", commit], check=True)
-        source = os.path.join(tree, "hyprbars")
+        repo = os.path.join(work, "hlp")
+        git("clone", "--quiet", "--filter=blob:none", "--no-checkout", "--", UPSTREAM, repo)
+        git("-C", repo, "checkout", "--quiet", "--detach", commit)
+        source = os.path.join(repo, "hyprbars")
 
-        pre = {name: digest(os.path.join(source, name)) for name in FILES}
+        pre = tree(source)
         for patch in PATCHES:
-            result = subprocess.run(
-                ["/usr/bin/python3", os.path.join(HERE, patch), source])
+            result = subprocess.run(["/usr/bin/python3", "-I",
+                                     os.path.join(HERE, patch), source])
             if result.returncode != 0:
                 die("%s does not apply at %s" % (patch, commit))
-        post = {name: digest(os.path.join(source, name)) for name in FILES}
+        post = tree(source)
 
         print("\n[%s]" % commit)
-        for name in FILES:
-            print("pre   %s  %s" % (pre[name], name))
-        for name in FILES:
-            print("post  %s  %s" % (post[name], name))
+        for name, value in pre.items():
+            print("pre   %s  %s" % (value, name))
+        for name, value in post.items():
+            print("post  %s  %s" % (value, name))
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
 
 def main(argv):
-    if len(argv) == 4 and argv[1] == "check" and argv[2] in ("pre", "post"):
-        # verify-pins check <stage> <commit> <dir>  is the documented order;
-        # accept it and nothing else.
-        die("usage: verify-pins check {pre|post} <commit> <source-dir>")
-    if len(argv) == 5 and argv[1] == "check":
-        stage = argv[2]
-        if stage not in ("pre", "post"):
-            die("stage must be pre or post")
-        return check(stage, argv[3], argv[4])
+    if len(argv) == 5 and argv[1] == "check" and argv[2] in ("pre", "post"):
+        return check(argv[2], argv[3], argv[4])
     if len(argv) == 3 and argv[1] == "regenerate":
         return regenerate(argv[2])
     sys.exit(__doc__.strip())
